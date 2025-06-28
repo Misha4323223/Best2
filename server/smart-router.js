@@ -46,7 +46,7 @@ const embroideryHandler = require('./embroidery-chat-handler');
 const aiEmbroideryPipeline = require('./ai-embroidery-pipeline');
 const webSearchProvider = require('./web-search-provider');
 const chatMemory = require('./chat-memory');
-// const svgPrintConverter = require('./svg-print-converter'); // Заменен на advancedVectorizer
+const freechatEnhanced = require('./chatfree-improved');
 
 /**
  * AI с автоматическим поиском при необходимости
