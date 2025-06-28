@@ -55,6 +55,77 @@ const enhancedAIAnalyzer = require('./enhanced-ai-analyzer.cjs');
 async function getAIResponseWithSearch(userQuery, options = {}) {
   try {
     SmartLogger.route(`🤖 Получаем ответ AI с Enhanced анализом`);
+    SmartLogger.route(`📌 ВХОДЯЩИЙ ЗАПРОС: "${userQuery}"`);
+    SmartLogger.route(`📌 ОПЦИИ:`, options);
+
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем генерацию изображений В САМОМ НАЧАЛЕ!
+    const queryLower = userQuery.toLowerCase();
+    
+    // Агрессивная проверка на генерацию изображений
+    const imageKeywords = [
+      'создай', 'создание', 'нарисуй', 'создать', 'рисуй', 'дизайн', 'принт', 'арт',
+      'техносамурай', 'техно-самурай', 'самурай', 'киберпанк', 'техно', 'кибер',
+      'фэнтези', 'дракон', 'робот', 'мех', 'аниме', 'манга', 'стимпанк',
+      'логотип', 'баннер', 'иллюстрация', 'картинка', 'изображение', 
+      'сгенерируй', 'генерация', 'нужен принт', 'сделай принт'
+    ];
+    
+    const shouldGenerateImage = imageKeywords.some(keyword => queryLower.includes(keyword));
+    
+    if (shouldGenerateImage) {
+      SmartLogger.route(`🎨 КРИТИЧЕСКОЕ: ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ ОБНАРУЖЕНА!`);
+      SmartLogger.route(`🎨 Запрос: "${userQuery}"`);
+      
+      try {
+        const aiImageGenerator = require('./ai-image-generator');
+        
+        // Определяем стиль
+        let style = 'realistic';
+        if (queryLower.includes('аниме') || queryLower.includes('манга')) {
+          style = 'anime';
+        } else if (queryLower.includes('арт') || queryLower.includes('художественный')) {
+          style = 'artistic';
+        }
+        
+        const imageResult = await aiImageGenerator.generateImage(userQuery, style);
+        
+        if (imageResult && imageResult.success) {
+          SmartLogger.route(`✅ УСПЕХ: Изображение сгенерировано!`);
+          
+          return {
+            success: true,
+            response: `🎨 Изображение "${userQuery}" создано!
+
+![Сгенерированное изображение](${imageResult.imageUrl})
+
+🖼️ [Просмотреть в полном размере](${imageResult.imageUrl})
+📥 [Скачать изображение](${imageResult.imageUrl})
+
+Размер: 1024x1024 пикселей
+Стиль: ${style}
+Провайдер: Pollinations AI`,
+            provider: 'Pollinations_AI',
+            imageGenerated: true,
+            imageUrl: imageResult.imageUrl,
+            searchUsed: false
+          };
+        } else {
+          return {
+            success: false,
+            response: `❌ Не удалось создать изображение: ${imageResult?.error || 'Неизвестная ошибка'}`,
+            provider: 'Pollinations_AI',
+            imageGenerated: false
+          };
+        }
+      } catch (error) {
+        return {
+          success: false,
+          response: `❌ Критическая ошибка при создании изображения: ${error.message}`,
+          provider: 'Pollinations_AI',
+          imageGenerated: false
+        };
+      }
+    }
 
     // Получаем контекст сессии
     const sessionId = options.sessionId;
@@ -125,76 +196,8 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       };
     }
 
-    // ДОБАВЛЕНО: Сначала проверяем запросы на генерацию изображений
-    const queryLowerForSvg = userQuery.toLowerCase();
-    
-    // Ключевые слова для генерации изображений - агрессивный подход
-    const directImageKeywords = [
-      'создай', 'создание', 'нарисуй', 'создать', 'рисуй', 'дизайн', 'принт', 'арт',
-      'техносамурай', 'техно-самурай', 'самурай', 'киберпанк', 'техно', 'кибер',
-      'фэнтези', 'дракон', 'робот', 'мех', 'аниме', 'манга', 'стимпанк',
-      'логотип', 'баннер', 'иллюстрация', 'картинка', 'изображение'
-    ];
-
-    const hasImageKeyword = directImageKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
-    // Если есть ключевые слова для изображений - СРАЗУ генерируем, БЕЗ AI анализа
-    if (hasImageKeyword) {
-      SmartLogger.route(`🎨 ПРЯМАЯ ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ: обнаружены ключевые слова в "${userQuery}"`);
-      
-      try {
-        const aiImageGenerator = require('./ai-image-generator');
-        
-        // Определяем стиль на основе контента
-        let style = 'realistic';
-        if (queryLowerForSvg.includes('аниме') || queryLowerForSvg.includes('манга')) {
-          style = 'anime';
-        } else if (queryLowerForSvg.includes('арт') || queryLowerForSvg.includes('художественный')) {
-          style = 'artistic';
-        }
-        
-        SmartLogger.route(`🎨 Генерируем изображение со стилем: ${style}`);
-        const imageResult = await aiImageGenerator.generateImage(userQuery, style);
-        
-        if (imageResult && imageResult.success) {
-          SmartLogger.route(`✅ Изображение успешно сгенерировано: ${imageResult.imageUrl}`);
-          
-          return {
-            success: true,
-            response: `🎨 Изображение "${userQuery}" создано!
-
-🖼️ [Просмотреть изображение](${imageResult.imageUrl})
-📥 [Скачать изображение](${imageResult.imageUrl})
-
-Размер: 1024x1024 пикселей
-Стиль: ${style}
-Провайдер: Pollinations AI`,
-            provider: 'Pollinations_AI',
-            imageGenerated: true,
-            imageUrl: imageResult.imageUrl,
-            searchUsed: false
-          };
-        } else {
-          SmartLogger.error(`❌ Ошибка генерации изображения:`, imageResult);
-          return {
-            success: false,
-            response: `❌ Не удалось создать изображение: ${imageResult?.error || 'Неизвестная ошибка'}`,
-            provider: 'Pollinations_AI',
-            imageGenerated: false
-          };
-        }
-      } catch (error) {
-        SmartLogger.error(`❌ Критическая ошибка генерации изображения:`, error);
-        return {
-          success: false,
-          response: `❌ Критическая ошибка при создании изображения: ${error.message}`,
-          provider: 'Pollinations_AI',
-          imageGenerated: false
-        };
-      }
-    }
-
     // Сначала проверяем локально на SVG конвертацию  
+    const queryLowerForSvg = userQuery.toLowerCase();
     const svgKeywords = ['сохрани в svg', 'сохрани svg', 'экспорт в svg', 'конверт в svg', 'сделай svg', 'сохрани в свг', 'сохрани свг'];
     const isSvgRequest = svgKeywords.some(keyword => queryLowerForSvg.includes(keyword));
 
