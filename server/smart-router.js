@@ -816,128 +816,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
 
     const pythonProvider = require('./python_provider_routes');
 
-    // Проверяем запросы на генерацию изображений напрямую
-    const imageKeywords = ['нарисуй', 'создай', 'сгенерируй', 'принт', 'дизайн', 'картинка', 'изображение', 'логотип', 'баннер', 'футболка', 'рисунок', 'вышивка', 'вышивку', 'embroidery'];
-    const isImageRequest = imageKeywords.some(keyword => queryLowerForSvg.includes(keyword));
 
-    // Специальная проверка для принтов
-    const printPatterns = [
-      /создай.*принт/i,
-      /нужен.*принт/i,
-      /сделай.*принт/i,
-      /принт.*техно/i,
-      /техно.*принт/i,
-      /создай.*техносамурай/i,
-      /техносамурай/i
-    ];
-    
-    const isPrintRequest = printPatterns.some(pattern => pattern.test(userQuery));
-    
-    SmartLogger.route(`🎨 Проверка генерации изображений: isImageRequest=${isImageRequest}, isPrintRequest=${isPrintRequest}`);
-
-    if (isImageRequest || isPrintRequest) {
-      SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения: isImageRequest=${isImageRequest}, isPrintRequest=${isPrintRequest}`);
-
-      // Проверяем, это запрос на вышивку
-      const isEmbroideryRequest = userQuery.toLowerCase().includes('вышивка') || 
-                                 userQuery.toLowerCase().includes('вышивку') || 
-                                 userQuery.toLowerCase().includes('embroidery');
-
-      // Импортируем генератор изображений
-      const aiImageGenerator = require('./ai-image-generator');
-
-      try {
-        // Определяем правильный стиль для генерации
-        let imageStyle = 'realistic';
-        if (isEmbroideryRequest) {
-          imageStyle = 'embroidery';
-        } else if (userQuery.toLowerCase().includes('принт') || userQuery.toLowerCase().includes('футболка') || userQuery.toLowerCase().includes('дизайн')) {
-          imageStyle = 'vector';
-        }
-
-        const imageResult = await aiImageGenerator.generateImage(userQuery, imageStyle);
-
-        if (imageResult.success && imageResult.imageUrl) {
-          let response = `Я создал изображение по вашему запросу! Вот результат:
-
-![Сгенерированное изображение](${imageResult.imageUrl})
-
-Изображение сохранено и готово к использованию.`;
-
-          // Если это запрос на вышивку, добавляем конвертацию в файлы вышивки
-          if (isEmbroideryRequest) {
-            try {
-              const embroideryHandler = require('./embroidery-chat-handler');
-              const embroideryResult = await embroideryHandler.processEmbroideryGeneration(imageResult.imageUrl, userQuery);
-
-              if (embroideryResult.success && embroideryResult.files && embroideryResult.files.length > 0) {
-                response += `\n\n📄 **Файлы для вышивки созданы:**`;
-
-                // Группируем файлы по типу
-                const embroideryFiles = embroideryResult.files.filter(f => f.type === 'embroidery');
-                const preparedImage = embroideryResult.files.find(f => f.type === 'prepared_image');
-                const colorScheme = embroideryResult.files.find(f => f.type === 'color_scheme');
-
-                embroideryFiles.forEach(file => {
-                  const sizeKB = (file.size / 1024).toFixed(1);
-                  response += `\n• [${file.format.toUpperCase()} файл](${file.url}) - ${sizeKB} КБ`;
-                });
-
-                if (preparedImage) {
-                  const sizeKB = (preparedImage.size / 1024).toFixed(1);
-                  response += `\n• [Подготовленное изображение](${preparedImage.url}) - ${sizeKB} КБ`;
-                }
-
-                if (colorScheme) {
-                  const sizeKB = (colorScheme.size / 1024).toFixed(1);
-                  response += `\n• [Цветовая схема](${colorScheme.url}) - ${sizeKB} КБ`;
-                }
-
-                // Добавляем превью вышивки на ткани
-                if (embroideryResult.previewUrl) {
-                  response += `\n\n🧵 **Превью на ткани:** [Как будет выглядеть вышивка](${embroideryResult.previewUrl})`;
-                }
-
-                if (embroideryResult.recommendations) {
-                  response += `\n\n🧵 **Рекомендации для вышивки:** ${embroideryResult.recommendations}`;
-                }
-              }
-            } catch (embError) {
-              SmartLogger.error('Ошибка конвертации в файлы вышивки:', embError);
-              response += `\n\nДля конвертации в файлы вышивки напишите "конвертировать в вышивку".`;
-            }
-          } else {
-            response += ` Если нужно что-то изменить, просто опишите что хотите поправить.`;
-          }
-
-          return {
-            success: true,
-            response: response,
-            provider: 'AI_Image_Generator',
-            searchUsed: false,
-            imageGenerated: true,
-            imageUrl: imageResult.imageUrl
-          };
-        } else {
-          return {
-            success: true,
-            response: `К сожалению, произошла ошибка при генерации изображения. Попробуйте переформулировать запрос или попробовать позже.`,
-            provider: 'AI_Image_Generator',
-            searchUsed: false,
-            imageGenerated: false
-          };
-        }
-      } catch (error) {
-        SmartLogger.error('Ошибка генерации изображения:', error);
-        return {
-          success: true,
-          response: `Извините, система генерации изображений временно недоступна. Попробуйте позже.`,
-          provider: 'AI_Image_Generator',
-          searchUsed: false,
-          imageGenerated: false
-        };
-      }
-    }
 
     // Проверяем запросы времени/даты напрямую
     const timeQueries = ['время', 'сейчас время', 'какое время', 'который час', 'сегодня число', 'какое число', 'какая дата'];
@@ -1131,6 +1010,62 @@ ${r.snippet}
       }
     }
 
+    // ИСПРАВЛЕННАЯ ЛОГИКА: Сначала проверяем ключевые слова напрямую, потом обращаемся к AI
+    const directImageKeywords = [
+      'нарисуй', 'создай изображение', 'сгенерируй', 'создай принт', 'нужен принт', 
+      'сделай принт', 'принт техно', 'техносамурай', 'картинка', 'изображение', 
+      'логотип', 'баннер', 'дизайн', 'создай вышивку'
+    ];
+    
+    const queryLowerCase = userQuery.toLowerCase();
+    const isDirectImageRequest = directImageKeywords.some(keyword => queryLowerCase.includes(keyword));
+    
+    SmartLogger.route(`🎨 ПРОВЕРКА ИЗОБРАЖЕНИЙ: "${userQuery}"`);
+    SmartLogger.route(`🎨 Прямая проверка ключевых слов: ${isDirectImageRequest}`);
+    
+    if (isDirectImageRequest) {
+      SmartLogger.route(`🎨 ОБНАРУЖЕН ЗАПРОС НА ГЕНЕРАЦИЮ через ключевые слова!`);
+      
+      // Сразу переходим к генерации без обращения к AI для анализа
+      const aiImageGenerator = require('./ai-image-generator');
+
+      try {
+        const imageResult = await aiImageGenerator.generateImage(userQuery, 'realistic');
+
+        if (imageResult.success && imageResult.imageUrl) {
+          return {
+            success: true,
+            response: `Я создал изображение по вашему запросу! Вот результат:
+
+![Сгенерированное изображение](${imageResult.imageUrl})
+
+Изображение сохранено и готово к использованию. Если нужно что-то изменить, просто опишите что хотите поправить.`,
+            provider: 'AI_Image_Generator',
+            searchUsed: false,
+            imageGenerated: true,
+            imageUrl: imageResult.imageUrl
+          };
+        } else {
+          return {
+            success: true,
+            response: `К сожалению, произошла ошибка при генерации изображения. Попробуйте переформулировать запрос или попробовать позже.`,
+            provider: 'AI_Image_Generator',
+            searchUsed: false,
+            imageGenerated: false
+          };
+        }
+      } catch (error) {
+        SmartLogger.error('Ошибка генерации изображения:', error);
+        return {
+          success: true,
+          response: `Извините, система генерации изображений временно недоступна. Попробуйте позже.`,
+          provider: 'AI_Image_Generator',
+          searchUsed: false,
+          imageGenerated: false
+        };
+      }
+    }
+
     const prompt = `Проанализируй запрос пользователя и определи тип действия:
 
 Запрос: "${userQuery}"
@@ -1299,37 +1234,22 @@ ${searchContext}
 
       return { success: false, reason: 'search_failed' };
     } else {
-      // AI дал обычный ответ - но нужно проверить, не является ли это запросом на генерацию
-
-      // Проверяем специфичные промпты для разных типов генерации
-      const isGeneralImageRequest = queryLowerForSvg.includes('создай изображение');
-      const isPrintRequest = queryLowerForSvg.includes('создай принт') || queryLowerForSvg.includes('нужен принт') || queryLowerForSvg.includes('принт техно') || queryLowerForSvg.includes('техносамурай');
-      const isEmbroideryGeneration = queryLowerForSvg.includes('создай вышивку');
-
-      // Дополнительные ключевые слова для совместимости
-      const additionalImageKeywords = ['нарисуй', 'сгенерируй', 'картинка', 'логотип', 'баннер'];
-      const embroideryKeywords = ['dst', 'pes', 'jef', 'exp', 'vp3'];
-
-      // Исключаем запросы на анализ трендов и бизнес-функции
+      // AI дал обычный ответ - этот fallback код больше не нужен, 
+      // так как мы уже проверили ключевые слова для изображений выше
+      
+      // Проверяем только запросы на анализ трендов и бизнес-функции (исключения)
       const isTrendAnalysis = queryLowerForSvg.includes('тренд') || queryLowerForSvg.includes('анализ') || queryLowerForSvg.includes('популярн');
       const isBusinessFunction = queryLowerForSvg.includes('рассчит') || queryLowerForSvg.includes('калькул') || queryLowerForSvg.includes('предложение');
 
+      // Если это НЕ анализ и НЕ бизнес-функция, проверяем embroidery форматы как последний fallback
+      const embroideryKeywords = ['dst', 'pes', 'jef', 'exp', 'vp3'];
       const hasEmbroideryFormats = embroideryKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-      const needsEmbroideryConversion = isEmbroideryGeneration || hasEmbroideryFormats;
+      const needsEmbroideryConversion = hasEmbroideryFormats;
 
-      // Улучшенная проверка на генерацию изображений
-      const isImageRequest = !isTrendAnalysis && !isBusinessFunction && (
-        isGeneralImageRequest || 
-        isPrintRequest || 
-        isEmbroideryGeneration ||
-        additionalImageKeywords.some(keyword => queryLowerForSvg.includes(keyword)) ||
-        /создай.*принт/i.test(userQuery) ||
-        /принт.*техно/i.test(userQuery) ||
-        /техно.*принт/i.test(userQuery) ||
-        /техносамурай/i.test(userQuery)
-      );
+      // Проверяем только embroidery конверсию как дополнительный fallback
+      const isImageRequest = !isTrendAnalysis && !isBusinessFunction && needsEmbroideryConversion;
       
-      SmartLogger.route(`🎨 Проверка генерации в fallback: isImageRequest=${isImageRequest}, isPrintRequest=${isPrintRequest}`);
+      SmartLogger.route(`🎨 Fallback проверка embroidery: isImageRequest=${isImageRequest}, hasEmbroideryFormats=${hasEmbroideryFormats}`);
 
       if (isImageRequest) {
         SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения через ключевые слова`);
