@@ -1,9 +1,13 @@
 /**
  * Расширенный поисковый провайдер с множественными источниками
  * Поддерживает поиск в реальном времени, анализ веб-страниц и базы знаний
+ * Интегрирован с Enhanced AI системой для продвинутого анализа
  */
 
 const webSearchProvider = require('./web-search-provider');
+const multilingualProcessor = require('./multilingual-processor');
+const temporalAnalyzer = require('./temporal-analyzer');
+const factChecker = require('./fact-checker');
 
 /**
  * Основная функция расширенного поиска
@@ -344,12 +348,295 @@ function generateLocalProcessedAnswer(results, originalQuery) {
   return answer;
 }
 
+/**
+ * Enhanced анализ результатов с интеграцией всех новых модулей
+ */
+async function performEnhancedAnalysisOnResults(searchResults, originalQuery, enhancedContext = {}) {
+  try {
+    console.log('🔍 [ENHANCED_ANALYSIS] Запуск продвинутого анализа результатов');
+    
+    const analysis = {
+      originalQuery,
+      timestamp: new Date().toISOString(),
+      
+      // Базовый анализ
+      basicAnalysis: await analyzeSearchResults(searchResults, originalQuery),
+      
+      // Временной анализ если есть контекст
+      temporalAnalysis: null,
+      
+      // Факт-чекинг
+      factCheckResults: null,
+      
+      // Мультиязычная обработка результатов
+      multilingualInsights: null,
+      
+      // Финальные рекомендации
+      enhancedRecommendations: [],
+      
+      // Общий скор качества
+      qualityScore: 0
+    };
+    
+    // Применяем временной анализ если есть контекст
+    if (enhancedContext.temporalRequirements) {
+      analysis.temporalAnalysis = temporalAnalyzer.applyTemporalPriority(
+        searchResults, 
+        enhancedContext.temporalRequirements
+      );
+    }
+    
+    // Выполняем факт-чекинг для важных запросов
+    if (searchResults.length >= 2 && enhancedContext.requiresFactCheck) {
+      analysis.factCheckResults = await factChecker.performFactCheck(
+        searchResults, 
+        originalQuery, 
+        { analysisContext: enhancedContext }
+      );
+    }
+    
+    // Мультиязычный анализ результатов
+    if (enhancedContext.multilingualContext) {
+      analysis.multilingualInsights = analyzeMultilingualResults(
+        searchResults, 
+        enhancedContext.multilingualContext
+      );
+    }
+    
+    // Генерируем enhanced рекомендации
+    analysis.enhancedRecommendations = generateEnhancedRecommendations(analysis, enhancedContext);
+    
+    // Рассчитываем общий скор качества
+    analysis.qualityScore = calculateEnhancedQualityScore(analysis);
+    
+    console.log('🔍 [ENHANCED_ANALYSIS] Анализ завершен:', {
+      qualityScore: analysis.qualityScore,
+      factChecked: !!analysis.factCheckResults,
+      temporalProcessed: !!analysis.temporalAnalysis,
+      recommendations: analysis.enhancedRecommendations.length
+    });
+    
+    return analysis;
+    
+  } catch (error) {
+    console.error('❌ [ENHANCED_ANALYSIS] Ошибка продвинутого анализа:', error);
+    return await analyzeSearchResults(searchResults, originalQuery); // Fallback
+  }
+}
+
+/**
+ * Анализ мультиязычных результатов
+ */
+function analyzeMultilingualResults(searchResults, multilingualContext) {
+  const insights = {
+    languageDistribution: {},
+    translationQuality: 0,
+    crossLanguageConsistency: 0,
+    recommendedLanguages: []
+  };
+  
+  // Анализируем распределение языков в результатах
+  searchResults.forEach(result => {
+    const detectedLang = multilingualProcessor.detectLanguage(
+      (result.title || '') + ' ' + (result.snippet || '')
+    );
+    insights.languageDistribution[detectedLang] = (insights.languageDistribution[detectedLang] || 0) + 1;
+  });
+  
+  // Оцениваем качество перевода и консистентность
+  const originalLang = multilingualContext.originalLanguage;
+  const targetLang = multilingualContext.targetLanguage;
+  
+  if (originalLang !== targetLang && multilingualContext.translatedQuery) {
+    insights.translationQuality = multilingualContext.confidence || 0.7;
+  }
+  
+  // Рекомендуемые языки для дополнительного поиска
+  const englishResults = insights.languageDistribution['en'] || 0;
+  const russianResults = insights.languageDistribution['ru'] || 0;
+  
+  if (englishResults < russianResults && originalLang !== 'en') {
+    insights.recommendedLanguages.push('en');
+  }
+  
+  return insights;
+}
+
+/**
+ * Генерация enhanced рекомендаций
+ */
+function generateEnhancedRecommendations(analysis, enhancedContext) {
+  const recommendations = [];
+  
+  // Рекомендации на основе факт-чекинга
+  if (analysis.factCheckResults) {
+    if (analysis.factCheckResults.overallCredibility < 0.6) {
+      recommendations.push({
+        type: 'credibility_warning',
+        message: `Низкая достоверность информации (${(analysis.factCheckResults.overallCredibility * 100).toFixed(1)}%). Рекомендуется дополнительная проверка.`,
+        priority: 'high'
+      });
+    }
+    
+    if (analysis.factCheckResults.contradictions.length > 0) {
+      recommendations.push({
+        type: 'contradiction_alert',
+        message: `Обнаружены противоречия между источниками: ${analysis.factCheckResults.contradictions.length}`,
+        priority: 'medium'
+      });
+    }
+  }
+  
+  // Временные рекомендации
+  if (analysis.temporalAnalysis && enhancedContext.temporalRequirements) {
+    const temporal = enhancedContext.temporalRequirements;
+    if (temporal.needsRealTime && temporal.priorityScore < 15) {
+      recommendations.push({
+        type: 'freshness_warning',
+        message: 'Найденная информация может быть устаревшей. Рекомендуется поиск более свежих данных.',
+        priority: 'medium'
+      });
+    }
+  }
+  
+  // Мультиязычные рекомендации
+  if (analysis.multilingualInsights && analysis.multilingualInsights.recommendedLanguages.length > 0) {
+    recommendations.push({
+      type: 'language_expansion',
+      message: `Для более полной информации рекомендуется поиск на языках: ${analysis.multilingualInsights.recommendedLanguages.join(', ')}`,
+      priority: 'low'
+    });
+  }
+  
+  // Общие рекомендации по качеству
+  if (analysis.qualityScore < 0.7) {
+    recommendations.push({
+      type: 'quality_improvement',
+      message: 'Качество найденной информации ниже оптимального. Попробуйте переформулировать запрос.',
+      priority: 'medium'
+    });
+  }
+  
+  return recommendations;
+}
+
+/**
+ * Расчет enhanced скора качества
+ */
+function calculateEnhancedQualityScore(analysis) {
+  let score = 0;
+  let weightSum = 0;
+  
+  // Базовый анализ (вес: 40%)
+  if (analysis.basicAnalysis && analysis.basicAnalysis.confidence) {
+    score += analysis.basicAnalysis.confidence * 0.4;
+    weightSum += 0.4;
+  }
+  
+  // Факт-чекинг (вес: 30%)
+  if (analysis.factCheckResults) {
+    score += analysis.factCheckResults.overallCredibility * 0.3;
+    weightSum += 0.3;
+  }
+  
+  // Временная релевантность (вес: 20%)
+  if (analysis.temporalAnalysis) {
+    const temporalScore = analysis.temporalAnalysis.length > 0 ? 
+      analysis.temporalAnalysis.reduce((sum, result) => sum + (result.temporalScore || 0), 0) / analysis.temporalAnalysis.length / 10 : 0.5;
+    score += temporalScore * 0.2;
+    weightSum += 0.2;
+  }
+  
+  // Мультиязычность (вес: 10%)
+  if (analysis.multilingualInsights) {
+    const multilingualScore = analysis.multilingualInsights.translationQuality || 0.5;
+    score += multilingualScore * 0.1;
+    weightSum += 0.1;
+  }
+  
+  // Нормализуем скор
+  return weightSum > 0 ? Math.min(score / weightSum, 1.0) : 0.5;
+}
+
+/**
+ * Интеграция с Enhanced AI для обработки поисковых запросов
+ */
+async function performEnhancedSearch(query, enhancedAnalysisData = {}) {
+  try {
+    console.log('🔍 [ENHANCED_SEARCH] Выполняем поиск с Enhanced анализом');
+    
+    const searchConfig = {
+      query,
+      maxResults: enhancedAnalysisData.maxResults || 10,
+      searchType: enhancedAnalysisData.searchType || 'comprehensive',
+      useMultilingual: enhancedAnalysisData.useMultilingual || false,
+      applyTemporal: enhancedAnalysisData.applyTemporal || false,
+      requiresFactCheck: enhancedAnalysisData.requiresFactCheck || false
+    };
+    
+    let searchResults = [];
+    
+    // Выполняем мультиязычный поиск если требуется
+    if (searchConfig.useMultilingual && enhancedAnalysisData.searchQueries) {
+      const multilingualResults = await multilingualProcessor.performMultilingualSearch(
+        enhancedAnalysisData.searchQueries,
+        { maxResults: searchConfig.maxResults }
+      );
+      
+      if (multilingualResults.success) {
+        searchResults = multilingualResults.results;
+      }
+    }
+    
+    // Fallback к стандартному поиску
+    if (searchResults.length === 0) {
+      const standardResult = await performAdvancedSearch(query, {
+        searchType: searchConfig.searchType,
+        maxResults: searchConfig.maxResults
+      });
+      
+      if (standardResult.success) {
+        searchResults = standardResult.results;
+      }
+    }
+    
+    // Применяем Enhanced анализ к результатам
+    const enhancedAnalysis = await performEnhancedAnalysisOnResults(
+      searchResults, 
+      query, 
+      enhancedAnalysisData
+    );
+    
+    return {
+      success: true,
+      results: searchResults,
+      enhancedAnalysis,
+      metadata: {
+        searchType: searchConfig.searchType,
+        resultsCount: searchResults.length,
+        qualityScore: enhancedAnalysis.qualityScore,
+        enhancedFeatures: {
+          multilingual: searchConfig.useMultilingual,
+          temporal: searchConfig.applyTemporal,
+          factCheck: searchConfig.requiresFactCheck
+        }
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ [ENHANCED_SEARCH] Ошибка Enhanced поиска:', error);
+    return await performAdvancedSearch(query); // Fallback
+  }
+}
+
 module.exports = {
   performAdvancedSearch,
   performComprehensiveSearch,
   searchRealTimeWeb,
   analyzeSearchResults,
-  generateAIProcessedAnswer
+  generateAIProcessedAnswer,
+  performEnhancedAnalysisOnResults,
+  performEnhancedSearch
 };
 
 /**

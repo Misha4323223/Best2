@@ -47,13 +47,14 @@ const aiEmbroideryPipeline = require('./ai-embroidery-pipeline');
 const webSearchProvider = require('./web-search-provider');
 const chatMemory = require('./chat-memory');
 const freechatEnhanced = require('./chatfree-improved');
+const enhancedAIAnalyzer = require('./enhanced-ai-analyzer');
 
 /**
- * AI с автоматическим поиском при необходимости
+ * AI с автоматическим поиском при необходимости и Enhanced анализом
  */
 async function getAIResponseWithSearch(userQuery, options = {}) {
   try {
-    SmartLogger.route(`🤖 Получаем ответ AI с памятью и контекстом`);
+    SmartLogger.route(`🤖 Получаем ответ AI с Enhanced анализом`);
 
     // Получаем контекст сессии
     const sessionId = options.sessionId;
@@ -64,9 +65,65 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       SmartLogger.route(`📋 Загружен контекст сессии ${sessionId}: ${sessionContext.messageCount} сообщений`);
     }
 
-    // Анализируем запрос с учетом контекста
+    // НОВЫЙ ENHANCED АНАЛИЗ
+    SmartLogger.route(`🧠 Запускаем Enhanced AI анализ`);
+    const enhancedAnalysis = await enhancedAIAnalyzer.performEnhancedAnalysis(userQuery, sessionId, {
+      previousQueries: options.previousQueries || [],
+      targetLanguage: options.targetLanguage || 'ru',
+      recentQueries: extractRecentQueries(sessionContext)
+    });
+
+    // Проверяем нужен ли поиск согласно Enhanced анализу
+    if (enhancedAnalysis.processingStrategy.needsSearch) {
+      SmartLogger.route(`🔍 Enhanced анализ определил необходимость поиска`);
+      
+      // Выполняем Enhanced поиск
+      const enhancedSearchResults = await enhancedAIAnalyzer.performEnhancedSearch(enhancedAnalysis);
+      
+      if (enhancedSearchResults.finalResults.length > 0) {
+        SmartLogger.route(`✅ Enhanced поиск успешен: ${enhancedSearchResults.finalResults.length} результатов`);
+        
+        // Генерируем Enhanced ответ
+        const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
+          enhancedAnalysis, 
+          enhancedSearchResults,
+          { includeAnalysisMetadata: false }
+        );
+        
+        return {
+          success: true,
+          response: enhancedResponse.text,
+          provider: 'Enhanced_AI_System',
+          searchUsed: true,
+          enhanced: true,
+          metadata: enhancedResponse.metadata
+        };
+      }
+    }
+
+    // Fallback к стандартному анализу для обратной совместимости
     const requestAnalysis = chatMemory.analyzeRequestWithContext(userQuery, sessionContext);
-    SmartLogger.route(`🔍 Анализ запроса:`, requestAnalysis);
+    SmartLogger.route(`🔍 Fallback к стандартному анализу:`, requestAnalysis);
+
+    // Если Enhanced анализ не требует поиска, генерируем прямой ответ
+    if (!enhancedAnalysis.processingStrategy.needsSearch) {
+      SmartLogger.route(`💭 Enhanced анализ: прямой ответ без поиска`);
+      
+      const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
+        enhancedAnalysis, 
+        { finalResults: [], metadata: { totalOriginal: 0 } },
+        { includeAnalysisMetadata: false }
+      );
+      
+      return {
+        success: true,
+        response: enhancedResponse.text,
+        provider: 'Enhanced_AI_Direct',
+        searchUsed: false,
+        enhanced: true,
+        metadata: enhancedResponse.metadata
+      };
+    }
 
     // Сначала проверяем локально на SVG конвертацию  
     const queryLowerForSvg = userQuery.toLowerCase();
@@ -2706,6 +2763,32 @@ ${result.recommendation}
     provider: 'BOOOMERANGS_Trends',
     searchUsed: true
   };
+}
+
+/**
+ * Извлечение недавних запросов из контекста сессии
+ */
+function extractRecentQueries(sessionContext) {
+  const queries = [];
+  
+  if (sessionContext && sessionContext.context) {
+    const lines = sessionContext.context.split('\n');
+    
+    for (const line of lines) {
+      if (line.startsWith('Пользователь:') || line.startsWith('User:')) {
+        const query = line.replace(/^(Пользователь:|User:)\s*/, '').trim();
+        if (query.length > 0 && queries.length < 10) {
+          queries.push({
+            text: query,
+            timestamp: new Date(),
+            length: query.length
+          });
+        }
+      }
+    }
+  }
+  
+  return queries;
 }
 
 module.exports = router;
