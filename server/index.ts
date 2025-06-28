@@ -2,7 +2,12 @@ import express, { type Request, Response, NextFunction } from "express";
 // Этот импорт вызывает ошибку из-за неверного форматирования в deepspeek-provider.js
 // Отключаем прямой импорт проблемного файла
 process.env.SKIP_DEEPSPEEK_ORIGINAL = 'true';
-import { registerRoutes } from "./routes";
+// Импорт маршрутов
+import routes from './routes';
+import chatHistory from './chat-history';
+import checkpointRoutes from './checkpoint-routes';
+import smartChatRoutes from './smart-chat-routes';
+const searchMonitoringRoutes = require('./search-monitoring-routes');
 import { setupVite, serveStatic, log } from "./vite";
 import cors from 'cors';
 
@@ -67,6 +72,13 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
     throw err;
   });
+
+  // Настройка маршрутов
+  app.use('/api', routes);
+  app.use('/api/chat-history', chatHistory);
+  app.use('/api/checkpoints', checkpointRoutes);
+  app.use('/api/smart-chat', smartChatRoutes);
+  app.use('/api/search-monitoring', searchMonitoringRoutes);
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route

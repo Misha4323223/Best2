@@ -2299,7 +2299,6 @@ async function getResponseFromProviders(message, analysis, options = {}) {
   }
 
   // Проверяем каждый провайдер из списка
-```text
   for (const provider of providers) {
     try {
       console.log(`Пробуем провайдер: ${provider} для категории: ${category}...`);

@@ -240,9 +240,13 @@ async function analyzeSearchResults(results, originalQuery) {
  */
 async function generateAIProcessedAnswer(results, originalQuery) {
   try {
-    // Собираем содержимое из результатов поиска
-    const searchContent = results.slice(0, 8).map((result, index) => {
-      return `${index + 1}. **${result.title}**
+    // Анализируем тип запроса для более точной обработки
+    const queryType = analyzeQueryType(originalQuery);
+    
+    // Собираем содержимое из результатов поиска с приоритизацией
+    const prioritizedResults = prioritizeResults(results, queryType);
+    const searchContent = prioritizedResults.slice(0, 8).map((result, index) => {
+      return `${index + 1}. **${result.title}** (Релевантность: ${result.relevanceScore || 'N/A'})
 Источник: ${result.source}
 Содержание: ${result.snippet || result.content || ''}
 ${result.content ? `Дополнительный контент: ${result.content.substring(0, 500)}...` : ''}
@@ -471,11 +475,57 @@ async function searchRealTimeWeb(query, options = {}) {
   }
 }
 
+/**
+ * Анализирует тип запроса для лучшей обработки
+ */
+function analyzeQueryType(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  if (/погода|температура|прогноз/.test(lowerQuery)) return 'weather';
+  if (/новост|событи|происходит/.test(lowerQuery)) return 'news';
+  if (/курс|цена|стоимость/.test(lowerQuery)) return 'financial';
+  if (/где|адрес|местоположение/.test(lowerQuery)) return 'location';
+  if (/что такое|определение|объясни/.test(lowerQuery)) return 'definition';
+  if (/как|инструкция|руководство/.test(lowerQuery)) return 'howto';
+  
+  return 'general';
+}
+
+/**
+ * Приоритизирует результаты поиска на основе типа запроса
+ */
+function prioritizeResults(results, queryType) {
+  return results.sort((a, b) => {
+    let scoreA = a.relevanceScore || 0;
+    let scoreB = b.relevanceScore || 0;
+    
+    // Бонусы за релевантные источники
+    switch (queryType) {
+      case 'weather':
+        if (a.source?.includes('weather') || a.title?.includes('погода')) scoreA += 2;
+        if (b.source?.includes('weather') || b.title?.includes('погода')) scoreB += 2;
+        break;
+      case 'news':
+        if (a.source?.includes('news') || a.source?.includes('новост')) scoreA += 2;
+        if (b.source?.includes('news') || b.source?.includes('новост')) scoreB += 2;
+        break;
+      case 'financial':
+        if (a.source?.includes('finance') || a.source?.includes('банк')) scoreA += 2;
+        if (b.source?.includes('finance') || b.source?.includes('банк')) scoreB += 2;
+        break;
+    }
+    
+    return scoreB - scoreA;
+  });
+}
+
 module.exports = {
   performAdvancedSearch,
   searchRealTimeWeb,
   performLocalWebSearch,
   performNewsSearch,
   performAcademicSearch,
-  performImageSearch
+  performImageSearch,
+  analyzeQueryType,
+  prioritizeResults
 };
