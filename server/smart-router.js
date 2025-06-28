@@ -1550,7 +1550,8 @@ const PROVIDER_SPECIALTIES = {
     ]
   },
   creative: {
-    // Творческие запросы, генерация текста, истории    providers: ["GeminiPro", "Claude", "Liaobots"],
+    // Творческие запросы, генерация текста, истории
+    providers: ["GeminiPro", "Claude", "Liaobots"],
     keywords: [
       "творчество", "креатив", "придумай", "сочини", "напиши", "создай", "генерация",
       "стих", "поэма", "рассказ", "история", "сказка", "роман", "новелла", "песня",
@@ -1855,30 +1856,6 @@ function analyzeMessage(message) {
     matchCount: detectedCategories[0].matchCount,
     allMatches: detectedCategories // Для отладки и логирования
   };
-}
-
-/**
- * Определяет требуется ли веб-поиск для запроса
- */
-function needsWebSearch(query) {
-  return webSearchProvider.needsWebSearch(query);
-}
-
-/**
- * Определяет содержит ли запрос URL для анализа
- */
-function hasUrlToAnalyze(query) {
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
-  const urls = query.match(urlRegex);
-  return urls && urls.length > 0;
-}
-
-/**
- * Извлекает URLs из текста
- */
-function extractUrls(query) {
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
-  return query.match(urlRegex) || [];
 }
 
 /**
@@ -2308,7 +2285,7 @@ async function getResponseFromProviders(message, analysis, options = {}) {
       systemPrompt = "Вы информационный ассистент с доступом к текущим данным. Предоставляйте актуальную информацию, где это возможно.";
       break;
     case "mathematical":
-      systemPrompt = "Вы математический эксперт. Предоставляяйте точные формулы, шаги решения и объяснения математических концепций.";
+      systemPrompt = "Вы математический эксперт. Предоставляйте точные формулы, шаги решения и объяснения математических концепций.";
       break;
     case "business":
       systemPrompt = "Вы бизнес-консультант. Давайте практичные и реалистичные советы по бизнесу, маркетингу и финансам.";
@@ -2322,6 +2299,7 @@ async function getResponseFromProviders(message, analysis, options = {}) {
   }
 
   // Проверяем каждый провайдер из списка
+```text
   for (const provider of providers) {
     try {
       console.log(`Пробуем провайдер: ${provider} для категории: ${category}...`);
@@ -2486,6 +2464,14 @@ router.post('/analyze', (req, res) => {
   try {
     // Анализируем сообщение
     const analysis = analyzeMessage(message);
+
+    // Проверяем наличие URL
+    const urlPattern = /(https?:\/\/[^\s]+)/g;
+    const hasUrls = urlPattern.test(message);
+    if (hasUrls) {
+        analysis.hasUrls = true;
+        analysis.complexity += 0.3; // Увеличиваем сложность для URL
+    }
 
     res.json({
       success: true,
@@ -2727,6 +2713,3 @@ module.exports = router;
 module.exports.routeMessage = routeMessage;
 module.exports.getChatResponse = getAIResponseWithSearch;
 module.exports.analyzeMessage = analyzeMessage;
-module.exports.needsWebSearch = needsWebSearch;
-module.exports.hasUrlToAnalyze = hasUrlToAnalyze;
-module.exports.extractUrls = extractUrls;

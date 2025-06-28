@@ -1,29 +1,48 @@
 
-const smartRouter = require('./smart-router');
+const { analyzeWebContent } = require('./web-content-parser');
+const { getWebSearchResults } = require('./free-web-search');
 
+/**
+ * Тестирование анализа URL и веб-контента
+ */
 async function testUrlAnalysis() {
-  console.log('🧪 Тестируем анализ URL...');
-  
-  const testQuery = "Проанализируй эту страницу: https://www.google.com и расскажи что там есть";
-  
-  try {
-    const result = await smartRouter.getAIResponseWithSearch(testQuery, {
-      preferredProvider: 'Qwen_Qwen_2_72B'
-    });
+    console.log('🔍 Тестирование анализа URL...');
     
-    console.log('✅ Результат анализа URL:');
-    console.log('Текст:', result.text.substring(0, 500) + '...');
-    console.log('Провайдер:', result.provider);
-    console.log('URL анализ использован:', result.urlAnalysisUsed);
-    console.log('Проанализированные URL:', result.analyzedUrls);
+    const testUrls = [
+        'https://example.com',
+        'https://github.com',
+        'https://stackoverflow.com/questions/1/what-is-javascript'
+    ];
     
-  } catch (error) {
-    console.error('❌ Ошибка тестирования:', error.message);
-  }
+    for (const url of testUrls) {
+        try {
+            console.log(`\n📋 Анализ URL: ${url}`);
+            
+            // Тест анализа веб-контента
+            const analysis = await analyzeWebContent(url);
+            console.log('✅ Результат анализа:', {
+                title: analysis.title,
+                description: analysis.description,
+                contentLength: analysis.content?.length || 0
+            });
+            
+        } catch (error) {
+            console.log('❌ Ошибка анализа:', error.message);
+        }
+    }
+    
+    // Тест поиска
+    try {
+        console.log('\n🔍 Тест веб-поиска...');
+        const searchResults = await getWebSearchResults('JavaScript tutorial');
+        console.log('✅ Найдено результатов:', searchResults.length);
+    } catch (error) {
+        console.log('❌ Ошибка поиска:', error.message);
+    }
 }
 
 if (require.main === module) {
-  testUrlAnalysis();
+    testUrlAnalysis();
 }
 
 module.exports = { testUrlAnalysis };

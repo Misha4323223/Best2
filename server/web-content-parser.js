@@ -16,7 +16,7 @@ const httpsAgent = new https.Agent({
 async function parseWebContent(url, title, snippet) {
   try {
     console.log(`🌐 [PARSER] Загружаем содержимое: ${url}`);
-    
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -42,16 +42,16 @@ async function parseWebContent(url, title, snippet) {
 
     const html = await response.text();
     const content = extractTextContent(html);
-    
+
     console.log(`✅ [PARSER] Извлечено ${content.length} символов из ${url}`);
-    
+
     return {
       title,
       snippet,
       content: content.substring(0, 800), // Ограничиваем размер
       source: url
     };
-    
+
   } catch (error) {
     console.log(`❌ [PARSER] Ошибка парсинга ${url}:`, error.message);
     return {
@@ -80,14 +80,14 @@ function extractTextContent(html) {
     // Ищем основной контент
     const mainContentRegex = /<(article|main|div[^>]*class="[^"]*content[^"]*")[^>]*>([\s\S]*?)<\/\1>/gi;
     const mainMatch = mainContentRegex.exec(text);
-    
+
     if (mainMatch && mainMatch[2]) {
       text = mainMatch[2];
     }
 
     // Удаляем все HTML теги
     text = text.replace(/<[^>]*>/g, ' ');
-    
+
     // Декодируем HTML entities
     text = text
       .replace(/&nbsp;/g, ' ')
@@ -107,14 +107,9 @@ function extractTextContent(html) {
 
     // Ищем параграфы с полезной информацией
     const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 20);
-    
-    // Если предложений мало, возвращаем весь очищенный текст
-    if (sentences.length < 3) {
-      return text.substring(0, 1000).trim();
-    }
-    
-    return sentences.slice(0, 15).join('. ').trim();
-    
+
+    return sentences.slice(0, 10).join('. ').trim();
+
   } catch (error) {
     console.log('❌ [PARSER] Ошибка извлечения текста:', error.message);
     return '';
@@ -126,20 +121,20 @@ function extractTextContent(html) {
  */
 async function enrichSearchResults(searchResults) {
   console.log(`🔍 [PARSER] Обогащаем ${searchResults.length} результатов поиска`);
-  
+
   const enrichedResults = [];
-  
+
   // Обрабатываем первые 3 результата для экономии времени
   for (let i = 0; i < Math.min(3, searchResults.length); i++) {
     const result = searchResults[i];
-    
+
     try {
       const parsed = await parseWebContent(result.url, result.title, result.snippet);
       enrichedResults.push(parsed);
-      
+
       // Небольшая задержка между запросами
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
     } catch (error) {
       console.log(`❌ [PARSER] Ошибка обработки результата ${i}:`, error.message);
       enrichedResults.push({
@@ -150,7 +145,7 @@ async function enrichSearchResults(searchResults) {
       });
     }
   }
-  
+
   // Добавляем оставшиеся результаты без парсинга
   for (let i = 3; i < searchResults.length; i++) {
     const result = searchResults[i];
@@ -161,7 +156,7 @@ async function enrichSearchResults(searchResults) {
       source: result.url
     });
   }
-  
+
   console.log(`✅ [PARSER] Обогащение завершено: ${enrichedResults.length} результатов`);
   return enrichedResults;
 }
