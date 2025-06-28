@@ -47,7 +47,7 @@ const aiEmbroideryPipeline = require('./ai-embroidery-pipeline');
 const webSearchProvider = require('./web-search-provider');
 const chatMemory = require('./chat-memory');
 const freechatEnhanced = require('./chatfree-improved');
-const enhancedAIAnalyzer = require('./enhanced-ai-analyzer');
+const enhancedAIAnalyzer = require('./enhanced-ai-analyzer.cjs');
 
 /**
  * AI с автоматическим поиском при необходимости и Enhanced анализом

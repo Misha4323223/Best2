@@ -3,11 +3,11 @@
  * Объединяет контекстный анализ, мультиязычность, временные приоритеты, факт-чекинг и персонализацию
  */
 
-const aiQueryAnalyzer = require('./ai-query-analyzer');
-const multilingualProcessor = require('./multilingual-processor');
-const temporalAnalyzer = require('./temporal-analyzer');
-const factChecker = require('./fact-checker');
-const personalizationEngine = require('./personalization-engine');
+const aiQueryAnalyzer = require('./ai-query-analyzer.cjs');
+const multilingualProcessor = require('./multilingual-processor.cjs');
+const temporalAnalyzer = require('./temporal-analyzer.cjs');
+const factChecker = require('./fact-checker.cjs');
+const personalizationEngine = require('./personalization-engine.cjs');
 
 /**
  * Главная функция enhanced AI-анализа
