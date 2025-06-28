@@ -5,9 +5,9 @@
  */
 
 const webSearchProvider = require('./web-search-provider');
-const multilingualProcessor = require('./multilingual-processor');
-const temporalAnalyzer = require('./temporal-analyzer');
-const factChecker = require('./fact-checker');
+const multilingualProcessor = require('./multilingual-processor.cjs');
+const temporalAnalyzer = require('./temporal-analyzer.cjs');
+const factChecker = require('./fact-checker.cjs');
 
 /**
  * Основная функция расширенного поиска

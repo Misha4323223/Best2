@@ -6,6 +6,9 @@
 // Импорт fetch для HTTP запросов
 const fetch = require('node-fetch');
 
+// Импорт кэша для поисковых запросов
+const { searchCache } = require('./search-cache');
+
 /**
  * Определяет требуется ли веб-поиск для запроса
  * @param {string} query - Запрос пользователя
@@ -314,7 +317,6 @@ async function performWebSearch(query, options = {}) {
     console.log(`🔍 [SEARCH] Выполняем веб-поиск для: "${query}"`);
     
     // Проверяем кэш
-    const { searchCache } = require('./search-cache');
     const cached = searchCache.get(query, 'web');
     if (cached) {
         console.log(`🎯 [CACHE] Найден кэшированный результат для: ${query}`);
@@ -370,7 +372,6 @@ async function performWebSearch(query, options = {}) {
     };
     
     // Сохраняем в кэш и аналитику
-    const { searchCache } = require('./search-cache');
     const { searchAnalytics } = require('./search-analytics');
     
     searchCache.set(query, 'web', result);

@@ -114,4 +114,4 @@ class SearchAnalytics {
 // Глобальный экземпляр аналитики
 const searchAnalytics = new SearchAnalytics();
 
-module.exports = { SearchAnalytics, searchAnalytics };
+export { SearchAnalytics, searchAnalytics };

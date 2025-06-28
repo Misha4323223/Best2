@@ -80,4 +80,4 @@ class SearchCache {
 // Глобальный экземпляр кэша
 const searchCache = new SearchCache();
 
-module.exports = { SearchCache, searchCache };
+export { SearchCache, searchCache };
