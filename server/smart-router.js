@@ -107,7 +107,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
 
     // Если Enhanced анализ не требует поиска, генерируем прямой ответ
     if (!enhancedAnalysis.processingStrategy.needsSearch) {
-      SmartLogger.route(`💭 Enhanced анализ: прямой ответ без поиска`);
+      SmartLogger.route(`💭 Enhanced анализ: прямой ответ без поиска. Стратегия: ${enhancedAnalysis.processingStrategy.strategy}`);
 
       const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
         enhancedAnalysis, 
@@ -820,8 +820,23 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     const imageKeywords = ['нарисуй', 'создай', 'сгенерируй', 'принт', 'дизайн', 'картинка', 'изображение', 'логотип', 'баннер', 'футболка', 'рисунок', 'вышивка', 'вышивку', 'embroidery'];
     const isImageRequest = imageKeywords.some(keyword => queryLowerForSvg.includes(keyword));
 
-    if (isImageRequest) {
-      SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения`);
+    // Специальная проверка для принтов
+    const printPatterns = [
+      /создай.*принт/i,
+      /нужен.*принт/i,
+      /сделай.*принт/i,
+      /принт.*техно/i,
+      /техно.*принт/i,
+      /создай.*техносамурай/i,
+      /техносамурай/i
+    ];
+    
+    const isPrintRequest = printPatterns.some(pattern => pattern.test(userQuery));
+    
+    SmartLogger.route(`🎨 Проверка генерации изображений: isImageRequest=${isImageRequest}, isPrintRequest=${isPrintRequest}`);
+
+    if (isImageRequest || isPrintRequest) {
+      SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения: isImageRequest=${isImageRequest}, isPrintRequest=${isPrintRequest}`);
 
       // Проверяем, это запрос на вышивку
       const isEmbroideryRequest = userQuery.toLowerCase().includes('вышивка') || 
@@ -1288,7 +1303,7 @@ ${searchContext}
 
       // Проверяем специфичные промпты для разных типов генерации
       const isGeneralImageRequest = queryLowerForSvg.includes('создай изображение');
-      const isPrintRequest = queryLowerForSvg.includes('создай принт');
+      const isPrintRequest = queryLowerForSvg.includes('создай принт') || queryLowerForSvg.includes('нужен принт') || queryLowerForSvg.includes('принт техно') || queryLowerForSvg.includes('техносамурай');
       const isEmbroideryGeneration = queryLowerForSvg.includes('создай вышивку');
 
       // Дополнительные ключевые слова для совместимости
@@ -1302,12 +1317,19 @@ ${searchContext}
       const hasEmbroideryFormats = embroideryKeywords.some(keyword => queryLowerForSvg.includes(keyword));
       const needsEmbroideryConversion = isEmbroideryGeneration || hasEmbroideryFormats;
 
+      // Улучшенная проверка на генерацию изображений
       const isImageRequest = !isTrendAnalysis && !isBusinessFunction && (
         isGeneralImageRequest || 
         isPrintRequest || 
         isEmbroideryGeneration ||
-        additionalImageKeywords.some(keyword => queryLowerForSvg.includes(keyword))
+        additionalImageKeywords.some(keyword => queryLowerForSvg.includes(keyword)) ||
+        /создай.*принт/i.test(userQuery) ||
+        /принт.*техно/i.test(userQuery) ||
+        /техно.*принт/i.test(userQuery) ||
+        /техносамурай/i.test(userQuery)
       );
+      
+      SmartLogger.route(`🎨 Проверка генерации в fallback: isImageRequest=${isImageRequest}, isPrintRequest=${isPrintRequest}`);
 
       if (isImageRequest) {
         SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения через ключевые слова`);
@@ -1740,6 +1762,12 @@ function analyzeMessage(message) {
   // Специальная проверка для генерации изображений с более гибким распознаванием
   const imageGenerationPatterns = [
     /создай.*принт/i,
+    /нужен.*принт/i,
+    /сделай.*принт/i,
+    /принт.*техно/i,
+    /техно.*принт/i,
+    /техносамурай/i,
+    /создай.*техносамурай/i,
     /нарисуй/i,
     /сгенерируй.*картинк/i,
     /дизайн.*футболк/i,
@@ -1748,7 +1776,9 @@ function analyzeMessage(message) {
     /логотип/i,
     /рисунок/i,
     /макет/i,
-    /концепт/i
+    /концепт/i,
+    /картинк/i,
+    /изображени/i
   ];
 
   // Специальная проверка для редактирования изображений

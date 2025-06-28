@@ -193,7 +193,7 @@ async function getAIEnhancedPrompt(prompt, style) {
     
     // Определяем тип запроса по ключевым словам
     const isGeneralImage = prompt.includes('создай изображение');
-    const isPrintDesign = prompt.includes('создай принт') || prompt.includes('нужен принт') || prompt.includes('сделай принт');
+    const isPrintDesign = prompt.includes('создай принт') || prompt.includes('нужен принт') || prompt.includes('сделай принт') || prompt.includes('принт техно') || prompt.includes('техносамурай');
     const isEmbroideryDesign = prompt.includes('создай вышивку');
     
     // Создаем запрос на перевод и улучшение промпта
