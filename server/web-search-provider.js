@@ -17,11 +17,14 @@ function needsWebSearch(query) {
     
     // Расширенные паттерны для определения поисковых запросов
     const patterns = [
-        // Погода
-        /погода|температура|дождь|снег|ветер|прогноз|градус|климат|атмосфер/,
+        // Погода (расширенный)
+        /погода|температура|дождь|снег|ветер|прогноз|градус|климат|атмосфер|осадки|влажность|давление|солнце|облачность/,
         
-        // Новости и события
-        /новост|событи|происходит|случилось|произошло|главные|сводка|сегодня|вчера|недавно/,
+        // Новости и события (расширенный)  
+        /новост|событи|происходит|случилось|произошло|главные|сводка|сегодня|вчера|недавно|свежие|актуальные|последние|breaking|срочно/,
+        
+        // Поиск в реальном времени
+        /сейчас|в данный момент|на данный момент|прямо сейчас|в настоящее время|текущий статус|real time|онлайн/,
         
         // Актуальная информация
         /сейчас|текущий|актуальный|последний|свежий|современн|недавн/,
@@ -314,6 +317,7 @@ async function performWebSearch(query, options = {}) {
     const { searchCache } = require('./search-cache');
     const cached = searchCache.get(query, 'web');
     if (cached) {
+        console.log(`🎯 [CACHE] Найден кэшированный результат для: ${query}`);
         return cached;
     }
     
@@ -365,9 +369,15 @@ async function performWebSearch(query, options = {}) {
         searchQuery: query
     };
     
-    // Сохраняем в кэш
+    // Сохраняем в кэш и аналитику
     const { searchCache } = require('./search-cache');
+    const { searchAnalytics } = require('./search-analytics');
+    
     searchCache.set(query, 'web', result);
+    
+    // Записываем в аналитику
+    const responseTime = Date.now() - (result.startTime || Date.now());
+    searchAnalytics.recordQuery(query, allResults.length, responseTime, 'web-search');
     
     return result;
 }

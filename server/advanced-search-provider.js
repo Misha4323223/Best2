@@ -277,13 +277,21 @@ ${searchContent}
 - Укажи ключевые факты
 - Заключи кратким резюме`;
 
-    // Отправляем запрос к Python G4F провайдеру
+    // Отправляем запрос к Python G4F провайдеру с улучшенным контекстом
     const fetch = require('node-fetch');
+    const enhancedPrompt = `${aiPrompt}
+
+ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ:
+- Тип запроса: ${queryType}
+- Количество источников: ${prioritizedResults.length}
+- Приоритетные результаты обработаны по релевантности
+- Требуется структурированный ответ с фактами и выводами`;
+
     const aiResponse = await fetch('http://localhost:5004/python/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: aiPrompt,
+        message: enhancedPrompt,
         provider: 'Qwen_Qwen_2_72B',
         timeout: 30000
       })

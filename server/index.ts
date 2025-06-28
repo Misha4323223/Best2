@@ -17,6 +17,11 @@ try {
   const { createRequire } = require('module');
   const customRequire = createRequire(import.meta.url);
   vectorizerManager = customRequire('./vectorizer-manager');
+
+// Мониторинг поисковой системы
+import searchMonitoringRoutes from './search-monitoring-routes';
+app.use('/api/search/monitoring', searchMonitoringRoutes);
+
   log('Vectorizer Manager initialized');
 } catch (error) {
   log('Vectorizer Manager initialization deferred');
