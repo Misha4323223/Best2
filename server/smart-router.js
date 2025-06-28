@@ -1014,13 +1014,29 @@ ${r.snippet}
     const directImageKeywords = [
       'нарисуй', 'создай изображение', 'сгенерируй', 'создай принт', 'нужен принт', 
       'сделай принт', 'принт техно', 'техносамурай', 'картинка', 'изображение', 
-      'логотип', 'баннер', 'дизайн', 'создай вышивку'
+      'логотип', 'баннер', 'дизайн', 'создай вышивку', 'создание принта', 
+      'создание изображения', 'принт', 'принта'
     ];
     
     const queryLowerCase = userQuery.toLowerCase();
-    const isDirectImageRequest = directImageKeywords.some(keyword => queryLowerCase.includes(keyword));
+    
+    // АГРЕССИВНАЯ ПРОВЕРКА - если есть слова принт + техно/самурай = ТОЧНО генерация!
+    const hasImageWords = queryLowerCase.includes('принт') || queryLowerCase.includes('создай') || queryLowerCase.includes('создание') || queryLowerCase.includes('нарисуй') || queryLowerCase.includes('сгенерируй');
+    const hasTechWords = queryLowerCase.includes('техно') || queryLowerCase.includes('самурай') || queryLowerCase.includes('техносамурай');
+    const isPrintTechRequest = hasImageWords && hasTechWords;
+    
+    // Улучшенная проверка с учетом словоформ и контекста
+    const isDirectImageRequest = isPrintTechRequest || 
+      directImageKeywords.some(keyword => queryLowerCase.includes(keyword)) ||
+      queryLowerCase.includes('создание принта') ||
+      queryLowerCase.includes('создание изображения') ||
+      /создай.*принт/i.test(userQuery) ||
+      /создание.*принт/i.test(userQuery) ||
+      /принт.*техно/i.test(userQuery) ||
+      /техносамурай/i.test(userQuery);
     
     SmartLogger.route(`🎨 ПРОВЕРКА ИЗОБРАЖЕНИЙ: "${userQuery}"`);
+    SmartLogger.route(`🎨 hasImageWords: ${hasImageWords}, hasTechWords: ${hasTechWords}, isPrintTechRequest: ${isPrintTechRequest}`);
     SmartLogger.route(`🎨 Прямая проверка ключевых слов: ${isDirectImageRequest}`);
     
     if (isDirectImageRequest) {
