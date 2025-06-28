@@ -3,10 +3,10 @@
  * API маршруты для мониторинга поисковой системы
  */
 
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const { searchCache } = require('./search-cache');
-const { searchAnalytics } = require('./search-analytics');
+import { searchCache } from './search-cache.js';
+import { searchAnalytics } from './search-analytics.js';
 
 /**
  * Получить статистику кэша
@@ -104,8 +104,8 @@ router.post('/test', async (req, res) => {
 
   try {
     const startTime = Date.now();
-    const webSearchProvider = require('./web-search-provider');
-    const results = await webSearchProvider.performWebSearch(query);
+    const { performWebSearch } = await import('./web-search-provider.js');
+    const results = await performWebSearch(query);
     const responseTime = Date.now() - startTime;
 
     // Записываем в аналитику
@@ -131,4 +131,4 @@ router.post('/test', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

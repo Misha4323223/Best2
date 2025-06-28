@@ -7,7 +7,7 @@ import { registerRoutes } from './routes';
 import chatHistory from './chat-history.js';
 import checkpointRoutes from './checkpoint-routes';
 import smartChatRoutes from './smart-chat-routes';
-const searchMonitoringRoutes = require('./search-monitoring-routes');
+import searchMonitoringRoutes from './search-monitoring-routes.js';
 import { setupVite, serveStatic, log } from "./vite";
 import cors from 'cors';
 

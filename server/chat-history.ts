@@ -1,6 +1,9 @@
+import { Router } from "express";
 import { db } from "./db.js";
 import { chatSessions, aiMessages } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
+
+const router = Router();
 
 /**
  * Создание новой сессии чата
@@ -157,6 +160,69 @@ async function deleteSession(sessionId) {
     return false;
   }
 }
+
+// API роуты
+router.post('/sessions', async (req, res) => {
+  try {
+    const { userId, title } = req.body;
+    const session = await createChatSession(userId, title);
+    res.json(session);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/sessions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const sessions = await getUserChatSessions(parseInt(userId));
+    res.json(sessions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/messages', async (req, res) => {
+  try {
+    const message = await saveMessage(req.body);
+    res.json(message);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/sessions/:sessionId/messages', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const messages = await getSessionMessages(parseInt(sessionId));
+    res.json(messages);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/sessions/:sessionId/title', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { title } = req.body;
+    const session = await updateSessionTitle(parseInt(sessionId), title);
+    res.json(session);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/sessions/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const success = await deleteSession(parseInt(sessionId));
+    res.json({ success });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+export default router;
 
 export {
   createChatSession,
