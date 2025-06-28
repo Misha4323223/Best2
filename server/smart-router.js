@@ -1566,8 +1566,7 @@ ${searchContext}
 
         const isRefusal = responseText.toLowerCase().includes('не могу предоставить');
 
-        SmartLogger.route(````text
-🔍 Анализ ответа: hasWeatherData=${hasWeatherData}, isRefusal=${isRefusal}`);
+        SmartLogger.route(`🔍 Анализ ответа: hasWeatherData=${hasWeatherData}, isRefusal=${isRefusal}`);
 
         if (hasWeatherData && !isRefusal) {
           SmartLogger.success(`✅ Упрощенная интеграция получила реальные данные!`);
