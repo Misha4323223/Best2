@@ -58,8 +58,125 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     SmartLogger.route(`📌 ВХОДЯЩИЙ ЗАПРОС: "${userQuery}"`);
     SmartLogger.route(`📌 ОПЦИИ:`, options);
 
-    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем генерацию изображений В САМОМ НАЧАЛЕ!
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем команды векторизации В САМОМ НАЧАЛЕ!
     const queryLower = userQuery.toLowerCase();
+    
+    // ПРИОРИТЕТНАЯ проверка команд векторизации
+    const vectorKeywords = [
+      'нужен вектор', 'векторизуй', 'в вектор', 'сделай векторным', 'преобразуй в вектор',
+      'векторизация', 'svg из изображения', 'векторная графика', 'создай svg',
+      'векторизатор 5006', 'вектор 5006', 'trace', 'трейс', 'автовекторизация'
+    ];
+    
+    const isVectorRequest = vectorKeywords.some(keyword => queryLower.includes(keyword));
+    
+    if (isVectorRequest) {
+      SmartLogger.route(`🎯 ВЕКТОРИЗАЦИЯ: Обнаружена команда векторизации!`);
+      SmartLogger.route(`🎯 Запрос: "${userQuery}"`);
+      
+      try {
+        let imageUrl = null;
+
+        // Ищем последнее сгенерированное изображение в сессии
+        if (options.sessionId) {
+          try {
+            const sessionContext = await chatMemory.getSessionContext(options.sessionId, 10);
+            const lastImageMatch = sessionContext.context.match(/https:\/\/image\.pollinations\.ai\/prompt\/[^\s\)]+/);
+            if (lastImageMatch) {
+              imageUrl = lastImageMatch[0];
+              SmartLogger.route(`🔍 Найдено последнее изображение в сессии: ${imageUrl.substring(0, 100)}...`);
+            }
+          } catch (error) {
+            SmartLogger.error(`Ошибка поиска изображения в сессии:`, error);
+          }
+        }
+
+        if (imageUrl) {
+          SmartLogger.route(`🎯 ПРЯМОЙ ЗАПРОС К ВЕКТОРИЗАТОРУ 5006`);
+
+          try {
+            const fetch = require('node-fetch');
+
+            SmartLogger.route(`🌐 Отправляем URL напрямую на векторизатор: ${imageUrl.substring(0, 100)}...`);
+
+            const requestData = {
+              imageUrl: imageUrl,
+              quality: 'simple',
+              outputFormat: 'svg'
+            };
+
+            const response = await fetch('http://localhost:5006/vectorize-url', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(requestData),
+              timeout: 30000
+            });
+
+            if (response.ok) {
+              const result = await response.json();
+
+              if (result.success) {
+                const svgContent = result.data?.svgContent || result.result?.svgContent;
+                if (svgContent) {
+                  console.log('Smart-router: SVG контент получен, длина:', svgContent.length);
+                }
+
+                const filename = result.data?.filename || result.result?.filename;
+                const fileUrl = result.data?.url || `/output/${filename}`;
+
+                const svgResponse = `✅ Векторизация завершена через ImageTracerJS!
+
+📄 Формат: SVG (12 цветов высокого качества)  
+🎨 Качество: ImageTracerJS v1.2.6
+📁 Файл: ${filename}
+🔗 [Просмотреть изображение](${fileUrl})
+📥 [Скачать SVG файл](${fileUrl}?download=true)`;
+
+                return {
+                  success: true,
+                  response: svgResponse,
+                  provider: 'ImageTracerJS-5006',
+                  model: 'imagetracer-vectorizer',
+                  category: 'vectorization',
+                  vectorUrl: fileUrl,
+                  svgContent: svgContent
+                };
+              } else {
+                throw new Error(result.error || 'Векторизация не удалась');
+              }
+            } else {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+          } catch (error) {
+            SmartLogger.error(`Ошибка прямого обращения к векторизатору 5006:`, error);
+            return {
+              success: false,
+              response: `❌ Ошибка векторизатора на порту 5006: ${error.message}`,
+              provider: 'Vectorizer-5006',
+              error: error.message
+            };
+          }
+        } else {
+          // Изображение не найдено в истории сессии
+          return {
+            success: false,
+            response: `❌ Не найдено изображение в истории чата для векторизации.\n\nСначала сгенерируйте изображение, а затем используйте команду "нужен вектор".`,
+            provider: 'Vectorizer-5006',
+            error: 'No image found in session history'
+          };
+        }
+      } catch (error) {
+        SmartLogger.error('Критическая ошибка векторизации:', error);
+        return {
+          success: false,
+          response: `❌ Критическая ошибка при векторизации: ${error.message}`,
+          provider: 'Vectorizer-5006',
+          error: error.message
+        };
+      }
+    }
     
     // Агрессивная проверка на генерацию изображений
     const imageKeywords = [
@@ -232,109 +349,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       'сделай svg', 'переведи в svg', 'векторный формат', 'trace', 'трейс'
     ];
 
-    // Специальная команда для прямого обращения к векторизатору на порту 5006
-    const directVectorizerKeywords = ['нужен вектор', 'векторизатор 5006', 'вектор 5006'];
-    const isDirectVectorizerRequest = directVectorizerKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-
-    // Обработка прямого запроса к векторизатору на порту 5006
-    if (isDirectVectorizerRequest) {
-      let imageUrl = null;
-
-      // Всегда ищем последнее сгенерированное изображение в сессии
-      if (options.sessionId) {
-        try {
-          const sessionContext = await chatMemory.getSessionContext(options.sessionId, 10);
-          const lastImageMatch = sessionContext.context.match(/https:\/\/image\.pollinations\.ai\/prompt\/[^\s\)]+/);
-          if (lastImageMatch) {
-            imageUrl = lastImageMatch[0];
-            SmartLogger.route(`🔍 Найдено последнее изображение в сессии: ${imageUrl.substring(0, 100)}...`);
-          }
-        } catch (error) {
-          SmartLogger.error(`Ошибка поиска изображения в сессии:`, error);
-        }
-      }
-
-      if (imageUrl) {
-        SmartLogger.route(`🎯 ПРЯМОЙ ЗАПРОС К ВЕКТОРИЗАТОРУ 5006`);
-
-        try {
-          const fetch = require('node-fetch');
-
-          SmartLogger.route(`🌐 Отправляем URL напрямую на векторизатор: ${imageUrl.substring(0, 100)}...`);
-
-          // Подготавливаем JSON данные для отправки на /convert-url
-          const requestData = {
-            imageUrl: imageUrl,
-            quality: 'simple',
-            outputFormat: 'svg'
-          };
-
-        const response = await fetch('http://localhost:5006/vectorize-url', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestData),
-          timeout: 30000
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-
-          if (result.success) {
-            // Убираем превью SVG, оставляем только ссылку
-            let svgPreview = '';
-            const svgContent = result.data?.svgContent || result.result?.svgContent;
-            if (svgContent) {
-              console.log('Smart-router: SVG контент получен, длина:', svgContent.length);
-            }
-
-            // Исправляем структуру ответа для ImageTracerJS
-            const filename = result.data?.filename || result.result?.filename;
-            const fileUrl = result.data?.url || `/output/${filename}`;
-
-            const svgResponse = `✅ Векторизация завершена через ImageTracerJS!
-
-📄 Формат: SVG (12 цветов высокого качества)  
-🎨 Качество: ImageTracerJS v1.2.6
-📁 Файл: ${filename}${svgPreview}
-🔗 [Просмотреть изображение](${fileUrl})
-📥 [Скачать SVG файл](${fileUrl}?download=true)`;
-
-            return {
-              success: true,
-              response: svgResponse,
-              provider: 'ImageTracerJS-5006',
-              model: 'imagetracer-vectorizer',
-              category: 'vectorization',
-              vectorUrl: fileUrl,
-              svgContent: svgContent
-            };
-          } else {
-            throw new Error(result.error || 'Векторизация не удалась');
-          }
-        } else {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-      } catch (error) {
-        SmartLogger.error(`Ошибка прямого обращения к векторизатору 5006:`, error);
-        return {
-          success: false,
-          response: `❌ Ошибка векторизатора на порту 5006: ${error.message}`,
-          provider: 'Vectorizer-5006',
-          error: error.message
-        };
-      }
-    } else {
-        // Изображение не найдено в истории сессии
-        return {
-          success: false,
-          response: `❌ Не найдено изображение в истории чата для векторизации.\n\nСначала сгенерируйте изображение, а затем используйте команду "нужен вектор".`,
-          provider: 'Vectorizer-5006',
-          error: 'No image found in session history'
-        };
-      }
-    }
+    // Удалено: дублирующийся код векторизации перенесен выше
 
     // Новые ключевые слова для продвинутого векторизатора
     const advancedVectorKeywords = [
