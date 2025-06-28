@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 // Функция для получения иконки провайдера в метаданных
 const getProviderIcon = (provider?: string) => {
   const providerName = provider?.toLowerCase() || '';
-  
+
   switch(providerName) {
     case 'deepspeek':
       return <span className="mr-1">👨‍💻</span>;
@@ -68,7 +68,7 @@ export default function SmartChatPage() {
     setUsername(name);
     setShowAuth(false);
     localStorage.setItem('chat_username', name);
-    
+
     // Добавляем приветственное сообщение
     const welcomeMessage: Message = {
       id: Date.now().toString(),
@@ -79,7 +79,7 @@ export default function SmartChatPage() {
       provider: 'booomerangs',
       model: 'advanced-checkpoint'
     };
-    
+
     setMessages([welcomeMessage]);
   };
 
@@ -130,7 +130,7 @@ export default function SmartChatPage() {
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
       console.error('Ошибка отправки сообщения:', error);
-      
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: 'Извините, произошла ошибка при отправке сообщения. Пожалуйста, попробуйте снова.',
@@ -138,7 +138,7 @@ export default function SmartChatPage() {
         timestamp: new Date(),
         status: 'error'
       };
-      
+
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -168,7 +168,7 @@ export default function SmartChatPage() {
             <h1 className="text-2xl font-bold text-gray-800 mb-2">BOOOMERANGS Smart AI</h1>
             <p className="text-gray-600">Продвинутый чат с системой чекпоинтов</p>
           </div>
-          
+
           <form onSubmit={(e) => {
             e.preventDefault();
             const formData = new FormData(e.target as HTMLFormElement);
@@ -191,7 +191,7 @@ export default function SmartChatPage() {
                 autoFocus
               />
             </div>
-            
+
             <button
               type="submit"
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
@@ -216,7 +216,7 @@ export default function SmartChatPage() {
               <p className="text-sm text-gray-600">Пользователь: {username}</p>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-2">
             <a 
               href="/checkpoints" 
@@ -259,7 +259,7 @@ export default function SmartChatPage() {
                       {message.model && <span className="ml-1">({message.model})</span>}
                     </div>
                   )}
-                  
+
                   <div className="prose prose-sm max-w-none">
                     {message.isUser ? (
                       <p className="whitespace-pre-wrap">{message.text}</p>
@@ -269,7 +269,7 @@ export default function SmartChatPage() {
                       </ReactMarkdown>
                     )}
                   </div>
-                  
+
                   <div className={`text-xs mt-2 ${
                     message.isUser ? 'text-blue-200' : 'text-gray-500'
                   }`}>
@@ -281,7 +281,7 @@ export default function SmartChatPage() {
                 </div>
               </div>
             ))}
-            
+
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 p-4 rounded-2xl">
@@ -296,7 +296,7 @@ export default function SmartChatPage() {
                 </div>
               </div>
             )}
-            
+
             <div ref={messagesEndRef} />
           </div>
 

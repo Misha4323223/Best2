@@ -76,20 +76,20 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     // Проверяем нужен ли поиск согласно Enhanced анализу
     if (enhancedAnalysis.processingStrategy.needsSearch) {
       SmartLogger.route(`🔍 Enhanced анализ определил необходимость поиска`);
-      
+
       // Выполняем Enhanced поиск
       const enhancedSearchResults = await enhancedAIAnalyzer.performEnhancedSearch(enhancedAnalysis);
-      
+
       if (enhancedSearchResults.finalResults.length > 0) {
         SmartLogger.route(`✅ Enhanced поиск успешен: ${enhancedSearchResults.finalResults.length} результатов`);
-        
+
         // Генерируем Enhanced ответ
         const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
           enhancedAnalysis, 
           enhancedSearchResults,
           { includeAnalysisMetadata: false }
         );
-        
+
         return {
           success: true,
           response: enhancedResponse.text,
@@ -108,13 +108,13 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     // Если Enhanced анализ не требует поиска, генерируем прямой ответ
     if (!enhancedAnalysis.processingStrategy.needsSearch) {
       SmartLogger.route(`💭 Enhanced анализ: прямой ответ без поиска`);
-      
+
       const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
         enhancedAnalysis, 
         { finalResults: [], metadata: { totalOriginal: 0 } },
         { includeAnalysisMetadata: false }
       );
-      
+
       return {
         success: true,
         response: enhancedResponse.text,
@@ -1566,7 +1566,8 @@ ${searchContext}
 
         const isRefusal = responseText.toLowerCase().includes('не могу предоставить');
 
-        SmartLogger.route(`🔍 Анализ ответа: hasWeatherData=${hasWeatherData}, isRefusal=${isRefusal}`);
+        SmartLogger.route(````text
+🔍 Анализ ответа: hasWeatherData=${hasWeatherData}, isRefusal=${isRefusal}`);
 
         if (hasWeatherData && !isRefusal) {
           SmartLogger.success(`✅ Упрощенная интеграция получила реальные данные!`);
@@ -2770,10 +2771,10 @@ ${result.recommendation}
  */
 function extractRecentQueries(sessionContext) {
   const queries = [];
-  
+
   if (sessionContext && sessionContext.context) {
     const lines = sessionContext.context.split('\n');
-    
+
     for (const line of lines) {
       if (line.startsWith('Пользователь:') || line.startsWith('User:')) {
         const query = line.replace(/^(Пользователь:|User:)\s*/, '').trim();
@@ -2787,7 +2788,7 @@ function extractRecentQueries(sessionContext) {
       }
     }
   }
-  
+
   return queries;
 }
 
