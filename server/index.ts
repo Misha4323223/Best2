@@ -3,7 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 // Отключаем прямой импорт проблемного файла
 process.env.SKIP_DEEPSPEEK_ORIGINAL = 'true';
 // Импорт маршрутов
-import routes from './routes';
+import { registerRoutes } from './routes';
 import chatHistory from './chat-history';
 import checkpointRoutes from './checkpoint-routes';
 import smartChatRoutes from './smart-chat-routes';
@@ -66,7 +66,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -77,7 +76,7 @@ app.use((req, res, next) => {
   });
 
   // Настройка маршрутов
-  app.use('/api', routes);
+  const server = await registerRoutes(app);
   app.use('/api/chat-history', chatHistory);
   app.use('/api/checkpoints', checkpointRoutes);
   app.use('/api/smart-chat', smartChatRoutes);
