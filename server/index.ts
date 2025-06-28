@@ -4,7 +4,7 @@ import express, { type Request, Response, NextFunction } from "express";
 process.env.SKIP_DEEPSPEEK_ORIGINAL = 'true';
 // Импорт маршрутов
 import { registerRoutes } from './routes';
-import chatHistory from './chat-history';
+import chatHistory from './chat-history.js';
 import checkpointRoutes from './checkpoint-routes';
 import smartChatRoutes from './smart-chat-routes';
 const searchMonitoringRoutes = require('./search-monitoring-routes');
