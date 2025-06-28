@@ -108,7 +108,12 @@ function extractTextContent(html) {
     // Ищем параграфы с полезной информацией
     const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 20);
     
-    return sentences.slice(0, 10).join('. ').trim();
+    // Если предложений мало, возвращаем весь очищенный текст
+    if (sentences.length < 3) {
+      return text.substring(0, 1000).trim();
+    }
+    
+    return sentences.slice(0, 15).join('. ').trim();
     
   } catch (error) {
     console.log('❌ [PARSER] Ошибка извлечения текста:', error.message);
