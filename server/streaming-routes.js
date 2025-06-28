@@ -30,12 +30,12 @@ module.exports = async function apiChatStream(req, res) {
     console.log('🔍 [STREAMING] Тип сообщения:', typeof message);
     console.log('🔍 [STREAMING] Длина сообщения:', message.length);
     console.log('🔍 [STREAMING] SessionId:', sessionId);
-    
+
     const messageAnalysis = analyzeMessage(message);
     console.log('🔍 [STREAMING] Результат анализа:', JSON.stringify(messageAnalysis, null, 2));
     console.log('📝 [STREAMING] Категория:', messageAnalysis.category);
     console.log('📝 [STREAMING] Провайдеры:', messageAnalysis.providers);
-    
+
     // Проверяем команду векторизации вручную
     const messageLower = message.toLowerCase();
     console.log('🔍 [STREAMING] Сообщение в нижнем регистре:', messageLower);
@@ -46,20 +46,20 @@ module.exports = async function apiChatStream(req, res) {
     let previousImage = null;
     if (messageAnalysis.category === 'image_editing' || messageAnalysis.category === 'image_edit') {
       console.log('🔍 [STREAMING] Ищем предыдущее изображение в сессии:', sessionId);
-      
+
       try {
         // Загружаем историю сообщений из базы данных
         const { getSessionMessages } = require('./chat-history.ts');
         const messages = await getSessionMessages(sessionId);
         console.log('💬 [STREAMING] Загружено сообщений из БД:', messages?.length || 0);
-        
+
         // Ищем последнее изображение в истории
         if (messages && messages.length > 0) {
           for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i];
             if (msg.sender === 'ai' && msg.text && msg.text.includes('![')) {
               console.log('🖼️ [STREAMING] Найдено сообщение с изображением!');
-              
+
               // Извлекаем URL изображения
               const imageMatch = msg.text.match(/!\[([^\]]*)\]\(([^)]+)\)/);
               if (imageMatch) {
@@ -74,7 +74,7 @@ module.exports = async function apiChatStream(req, res) {
             }
           }
         }
-        
+
         if (!previousImage) {
           console.log('❌ [STREAMING] Предыдущее изображение не найдено в истории БД');
         }
@@ -86,19 +86,19 @@ module.exports = async function apiChatStream(req, res) {
     // Проверяем команду векторизации
     const { isVectorizerCommand, handleVectorizerCommand } = require('./vectorizer-chat-integration.cjs');
     const isDirectVectorizerRequest = isVectorizerCommand(message);
-    
+
     if (isDirectVectorizerRequest) {
       console.log('🎯 [STREAMING] ВЕКТОРИЗАЦИЯ: Обнаружена команда векторизации');
-      
+
       try {
         const success = await handleVectorizerCommand(message, sessionId, res, previousImage);
-        
+
         if (success) {
           console.log('✅ [STREAMING] Векторизация завершена успешно');
         } else {
           console.log('❌ [STREAMING] Векторизация завершена с ошибкой');
         }
-        
+
       } catch (error) {
         console.error('❌ [STREAMING] Ошибка векторизации:', error);
         res.write(`event: message\n`);
@@ -107,7 +107,7 @@ module.exports = async function apiChatStream(req, res) {
           content: `❌ Ошибка при векторизации: ${error.message}`
         })}\n\n`);
       }
-      
+
       res.write(`event: done\n`);
       res.write(`data: {}\n\n`);
       res.end();
@@ -117,25 +117,25 @@ module.exports = async function apiChatStream(req, res) {
     // Обрабатываем редактирование изображений
     if (messageAnalysis.category === 'image_editing') {
       console.log('🎨 [STREAMING] Запуск редактирования изображения...');
-      
+
       if (!previousImage || !previousImage.url) {
         res.write(`event: error\n`);
         res.write(`data: ${JSON.stringify({ error: 'Для редактирования нужно сначала создать изображение' })}\n\n`);
         res.end();
         return;
       }
-      
+
       try {
         res.write(`event: message\n`);
         res.write(`data: ${JSON.stringify({ 
           role: 'assistant', 
           content: '🎨 Обрабатываю изображение...' 
         })}\n\n`);
-        
+
         // Используем гибридную систему редактирования
         const { editImage } = await import('./hybrid-image-generator.js');
         const result = await editImage(previousImage.url, message);
-        
+
         if (result && result.success) {
           res.write(`event: image\n`);
           res.write(`data: ${JSON.stringify({ 
@@ -143,7 +143,7 @@ module.exports = async function apiChatStream(req, res) {
             description: result.description,
             operation: result.operation
           })}\n\n`);
-          
+
           res.write(`event: message\n`);
           res.write(`data: ${JSON.stringify({ 
             role: 'assistant', 
@@ -166,7 +166,7 @@ module.exports = async function apiChatStream(req, res) {
     if (messageAnalysis.category === 'image_generation' || messageAnalysis.category === 'image_edit') {
       try {
         const userId = `session_${sessionId}`;
-        
+
         // Используем гибридную систему генерации
         const { generateImage } = await import('./hybrid-image-generator.js');
         const result = await generateImage(
@@ -176,7 +176,7 @@ module.exports = async function apiChatStream(req, res) {
           sessionId,
           userId
         );
-        
+
         if (result && result.success) {
           const imageUrl = result.imageUrl;
           res.write(`event: image\n`);

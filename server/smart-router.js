@@ -46,33 +46,90 @@ const embroideryHandler = require('./embroidery-chat-handler');
 const aiEmbroideryPipeline = require('./ai-embroidery-pipeline');
 const webSearchProvider = require('./web-search-provider');
 const chatMemory = require('./chat-memory');
-// const svgPrintConverter = require('./svg-print-converter'); // Заменен на advancedVectorizer
+const freechatEnhanced = require('./chatfree-improved');
+const enhancedAIAnalyzer = require('./enhanced-ai-analyzer');
 
 /**
- * AI с автоматическим поиском при необходимости
+ * AI с автоматическим поиском при необходимости и Enhanced анализом
  */
 async function getAIResponseWithSearch(userQuery, options = {}) {
   try {
-    SmartLogger.route(`🤖 Получаем ответ AI с памятью и контекстом`);
-    
+    SmartLogger.route(`🤖 Получаем ответ AI с Enhanced анализом`);
+
     // Получаем контекст сессии
     const sessionId = options.sessionId;
     let sessionContext = { context: chatMemory.AI_CAPABILITIES, messageCount: 0 };
-    
+
     if (sessionId) {
       sessionContext = await chatMemory.getSessionContext(sessionId, 5);
       SmartLogger.route(`📋 Загружен контекст сессии ${sessionId}: ${sessionContext.messageCount} сообщений`);
     }
 
-    // Анализируем запрос с учетом контекста
+    // НОВЫЙ ENHANCED АНАЛИЗ
+    SmartLogger.route(`🧠 Запускаем Enhanced AI анализ`);
+    const enhancedAnalysis = await enhancedAIAnalyzer.performEnhancedAnalysis(userQuery, sessionId, {
+      previousQueries: options.previousQueries || [],
+      targetLanguage: options.targetLanguage || 'ru',
+      recentQueries: extractRecentQueries(sessionContext)
+    });
+
+    // Проверяем нужен ли поиск согласно Enhanced анализу
+    if (enhancedAnalysis.processingStrategy.needsSearch) {
+      SmartLogger.route(`🔍 Enhanced анализ определил необходимость поиска`);
+      
+      // Выполняем Enhanced поиск
+      const enhancedSearchResults = await enhancedAIAnalyzer.performEnhancedSearch(enhancedAnalysis);
+      
+      if (enhancedSearchResults.finalResults.length > 0) {
+        SmartLogger.route(`✅ Enhanced поиск успешен: ${enhancedSearchResults.finalResults.length} результатов`);
+        
+        // Генерируем Enhanced ответ
+        const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
+          enhancedAnalysis, 
+          enhancedSearchResults,
+          { includeAnalysisMetadata: false }
+        );
+        
+        return {
+          success: true,
+          response: enhancedResponse.text,
+          provider: 'Enhanced_AI_System',
+          searchUsed: true,
+          enhanced: true,
+          metadata: enhancedResponse.metadata
+        };
+      }
+    }
+
+    // Fallback к стандартному анализу для обратной совместимости
     const requestAnalysis = chatMemory.analyzeRequestWithContext(userQuery, sessionContext);
-    SmartLogger.route(`🔍 Анализ запроса:`, requestAnalysis);
+    SmartLogger.route(`🔍 Fallback к стандартному анализу:`, requestAnalysis);
+
+    // Если Enhanced анализ не требует поиска, генерируем прямой ответ
+    if (!enhancedAnalysis.processingStrategy.needsSearch) {
+      SmartLogger.route(`💭 Enhanced анализ: прямой ответ без поиска`);
+      
+      const enhancedResponse = await enhancedAIAnalyzer.generateEnhancedResponse(
+        enhancedAnalysis, 
+        { finalResults: [], metadata: { totalOriginal: 0 } },
+        { includeAnalysisMetadata: false }
+      );
+      
+      return {
+        success: true,
+        response: enhancedResponse.text,
+        provider: 'Enhanced_AI_Direct',
+        searchUsed: false,
+        enhanced: true,
+        metadata: enhancedResponse.metadata
+      };
+    }
 
     // Сначала проверяем локально на SVG конвертацию  
     const queryLowerForSvg = userQuery.toLowerCase();
     const svgKeywords = ['сохрани в svg', 'сохрани svg', 'экспорт в svg', 'конверт в svg', 'сделай svg', 'сохрани в свг', 'сохрани свг'];
     const isSvgRequest = svgKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     // Проверяем запросы на базовую оптимизацию для печати
     const basicPrintKeywords = [
       'оптимизируй для печати', 'оптимизация печати',
@@ -80,20 +137,20 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       'печать на футболке', 'печать на ткани', 'подготовка к печати'
     ];
     const isPrintOptRequest = basicPrintKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     // Команды, которые запускают продвинутую обработку
     const advancedPrintKeywords = [
       'подготовь для печати'  // Эта команда теперь запускает полный цикл
     ];
     const isAdvancedPrintRequest = advancedPrintKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     // Проверяем запрос на полную обработку (базовая + продвинутая)
     const fullProcessKeywords = [
       'создай для печати', 'полная обработка', 'всё для печати',
       'комплексная обработка', 'полный цикл'
     ];
     const isFullProcessRequest = fullProcessKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     // Проверяем запросы на векторизацию и продвинутую обработку
     const vectorKeywords = [
       'векторизуй', 'сделай вектор', 'создай контуры', 'векторная версия',
@@ -103,15 +160,15 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       'в векторы', 'в вектор', 'превратить в svg', 'конвертировать в svg',
       'сделай svg', 'переведи в svg', 'векторный формат', 'trace', 'трейс'
     ];
-    
+
     // Специальная команда для прямого обращения к векторизатору на порту 5006
     const directVectorizerKeywords = ['нужен вектор', 'векторизатор 5006', 'вектор 5006'];
     const isDirectVectorizerRequest = directVectorizerKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     // Обработка прямого запроса к векторизатору на порту 5006
     if (isDirectVectorizerRequest) {
       let imageUrl = null;
-      
+
       // Всегда ищем последнее сгенерированное изображение в сессии
       if (options.sessionId) {
         try {
@@ -125,22 +182,22 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
           SmartLogger.error(`Ошибка поиска изображения в сессии:`, error);
         }
       }
-      
+
       if (imageUrl) {
         SmartLogger.route(`🎯 ПРЯМОЙ ЗАПРОС К ВЕКТОРИЗАТОРУ 5006`);
-        
+
         try {
           const fetch = require('node-fetch');
-          
+
           SmartLogger.route(`🌐 Отправляем URL напрямую на векторизатор: ${imageUrl.substring(0, 100)}...`);
-          
+
           // Подготавливаем JSON данные для отправки на /convert-url
           const requestData = {
             imageUrl: imageUrl,
             quality: 'simple',
             outputFormat: 'svg'
           };
-        
+
         const response = await fetch('http://localhost:5006/vectorize-url', {
           method: 'POST',
           headers: {
@@ -149,10 +206,10 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
           body: JSON.stringify(requestData),
           timeout: 30000
         });
-        
+
         if (response.ok) {
           const result = await response.json();
-          
+
           if (result.success) {
             // Убираем превью SVG, оставляем только ссылку
             let svgPreview = '';
@@ -164,7 +221,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
             // Исправляем структуру ответа для ImageTracerJS
             const filename = result.data?.filename || result.result?.filename;
             const fileUrl = result.data?.url || `/output/${filename}`;
-            
+
             const svgResponse = `✅ Векторизация завершена через ImageTracerJS!
 
 📄 Формат: SVG (12 цветов высокого качества)  
@@ -207,7 +264,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
         };
       }
     }
-    
+
     // Новые ключевые слова для продвинутого векторизатора
     const advancedVectorKeywords = [
       'супер векторизация', 'профи качество', 'ультра svg', 'премиум векторизация',
@@ -216,10 +273,10 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       'векторизация в pdf', 'пакетная векторизация', 'потрейс', 'детальная векторизация',
       'качественная векторизация', 'точная векторизация', 'автотрейс', 'автовекторизация'
     ];
-    
+
     const isVectorRequest = vectorKeywords.some(keyword => queryLowerForSvg.includes(keyword));
     const isAdvancedVectorRequest = advancedVectorKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     // Проверяем запросы специально на цветовую сепарацию
     const colorSeparationKeywords = [
       'сепарация цветов', 'цветовая сепарация', 'разделение цветов',
@@ -227,11 +284,11 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       'повторно выполнить цветовую сепарацию', 'повтори сепарацию',
       'сделай сепарацию', 'выполни сепарацию', 'запусти сепарацию'
     ];
-    
+
     // Дополнительная проверка точного совпадения
     const exactColorSeparationMatch = queryLowerForSvg === 'сепарация цветов';
     const isColorSeparationRequest = colorSeparationKeywords.some(keyword => queryLowerForSvg.includes(keyword)) || exactColorSeparationMatch;
-    
+
     // Детальная отладка для всех запросов
     console.log(`🔍 ПОЛНАЯ ОТЛАДКА:`);
     console.log(`   Исходный запрос: "${userQuery}"`);
@@ -240,7 +297,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     console.log(`   Содержит "цветов": ${queryLowerForSvg.includes('цветов')}`);
     console.log(`   Точное совпадение: ${exactColorSeparationMatch}`);
     console.log(`   Результат проверки: ${isColorSeparationRequest}`);
-    
+
     // Отладочная информация
     if (isColorSeparationRequest) {
       SmartLogger.route(`🎨 Обнаружен запрос на цветовую сепарацию: "${userQuery}"`);
@@ -249,21 +306,21 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     // Обработка продвинутых запросов векторизации
     if (isAdvancedVectorRequest) {
       SmartLogger.route(`🚀 Обнаружен запрос на продвинутую векторизацию: "${userQuery}"`);
-      
+
       // Ищем последнее изображение в контексте сессии
       let lastImageUrl = null;
-      
+
       // Получаем сообщения напрямую из базы данных через SQL
       const { db } = require('./db');
       const { aiMessages } = require('../shared/schema');
       const { eq } = require('drizzle-orm');
-      
+
       const messages = await db
         .select()
         .from(aiMessages)
         .where(eq(aiMessages.sessionId, sessionId))
         .orderBy(aiMessages.createdAt);
-      
+
       if (messages && messages.length > 0) {
         for (let i = messages.length - 1; i >= 0; i--) {
           const msg = messages[i];
@@ -271,7 +328,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
             const imageMatch1 = msg.content.match(/!\[.*?\]\((https:\/\/image\.pollinations\.ai[^)]+)\)/);
             const imageMatch2 = msg.content.match(/(https:\/\/image\.pollinations\.ai[^\s\)]+)/);
             const imageMatch = imageMatch1 || imageMatch2;
-            
+
             if (imageMatch) {
               lastImageUrl = imageMatch[1];
               break;
@@ -279,24 +336,24 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
           }
         }
       }
-      
+
       if (lastImageUrl) {
         try {
           const advancedVectorizer = require('../advanced-vectorizer.cjs');
-          
+
           // Используем единственный режим шелкографии
           SmartLogger.route('🎨 Режим: Шелкография (максимум 5 цветов, до 20МБ)');
-          
+
           // Загружаем изображение
           const fetch = require('node-fetch');
           const response = await fetch(lastImageUrl);
           const imageBuffer = await response.buffer();
-          
+
           // Используем векторизацию для шелкографии
           let result;
           try {
             SmartLogger.route('🎨 Запуск векторизации для шелкографии');
-            
+
             result = await advancedVectorizer.silkscreenVectorize(
               imageBuffer,
               {
@@ -304,7 +361,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                 maxFileSize: 20 * 1024 * 1024 // 20МБ максимум
               }
             );
-            
+
             if (!result.success) {
               throw new Error(result.error || 'Ошибка векторизации');
             }
@@ -317,7 +374,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
               { outputFormat: 'svg' }
             );
           }
-          
+
           if (result.success) {
             let responseText = `✅ **Векторизация для шелкографии завершена!**\n\n`;
             responseText += `📄 **Формат:** SVG (максимум 5 цветов)\n`;
@@ -326,22 +383,22 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
               responseText += `🗜️ **Оптимизирован:** до 20МБ\n`;
             }
             responseText += `🎨 **Оптимизировано для печати**\n\n`;
-            
+
             // Информация о файле
             responseText += `📊 **Детали:**\n`;
             responseText += `• Режим: Шелкография\n`;
             responseText += `• Цвета: Максимум 5\n`;
             responseText += `• Лимит размера: 20МБ\n\n`;
-            
+
             // Сохраняем SVG файл для доступа
             const crypto = require('crypto');
             const imageId = crypto.randomBytes(8).toString('hex');
             const filename = `vectorized_${imageId}.svg`;
             const outputPath = path.join(__dirname, '..', 'output', 'vectorizer', filename);
-            
+
             try {
               await fs.writeFile(outputPath, result.svgContent, 'utf8');
-              
+
               responseText += `📁 **Файл готов:**\n`;
               responseText += `🔗 [Просмотреть SVG](/output/vectorizer/${filename})\n`;
               responseText += `📥 [Скачать SVG](/output/vectorizer/${filename}?download=true)\n\n`;
@@ -349,9 +406,9 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
               console.error('Ошибка сохранения файла:', writeError);
               responseText += `⚠️ Файл создан, но возникла проблема с сохранением\n\n`;
             }
-            
+
             responseText += `✅ Векторизация для шелкографии завершена успешно`;
-            
+
             return {
               success: true,
               response: responseText,
@@ -364,7 +421,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
               provider: 'advanced-vectorizer'
             };
           }
-          
+
         } catch (error) {
           SmartLogger.error('Ошибка продвинутой векторизации:', error);
           return {
@@ -384,26 +441,26 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
 
     if (isSvgRequest) {
       SmartLogger.route(`🎨 Обнаружен запрос на SVG конвертацию локально`);
-      
+
       // Ищем последнее изображение в контексте сессии
       let lastImageUrl = null;
-      
+
       // Получаем сообщения напрямую из базы данных через SQL
       const { db } = require('./db');
       const { aiMessages } = require('../shared/schema');
       const { eq } = require('drizzle-orm');
-      
+
       const messages = await db
         .select()
         .from(aiMessages)
         .where(eq(aiMessages.sessionId, sessionId))
         .orderBy(aiMessages.createdAt);
-      
+
       SmartLogger.route(`🔍 Ищем изображения в базе данных:`, {
         sessionId,
         messagesCount: messages?.length || 0
       });
-      
+
       if (messages && messages.length > 0) {
         // Ищем последнее изображение в сообщениях AI
         for (let i = messages.length - 1; i >= 0; i--) {
@@ -415,14 +472,14 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
             hasImage: msg.content?.includes('![') || false,
             hasPollinations: msg.content?.includes('https://image.pollinations.ai') || false
           });
-          
+
           if (msg.content && msg.sender === 'ai' && (msg.content.includes('![') || msg.content.includes('https://image.pollinations.ai'))) {
             // Проверяем разные форматы изображений
             const imageMatch1 = msg.content.match(/!\[.*?\]\((https:\/\/image\.pollinations\.ai[^)]+)\)/);
             const imageMatch2 = msg.content.match(/(https:\/\/image\.pollinations\.ai[^\s\)]+)/);
-            
+
             const imageMatch = imageMatch1 || imageMatch2;
-            
+
             if (imageMatch) {
               lastImageUrl = imageMatch[1];
               SmartLogger.route(`🖼️ Найдено последнее изображение: ${lastImageUrl.substring(0, 80)}...`);
@@ -431,12 +488,12 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
           }
         }
       }
-      
+
       SmartLogger.route(`🔍 Результат поиска изображения:`, {
         found: !!lastImageUrl,
         url: lastImageUrl ? lastImageUrl.substring(0, 50) + '...' : null
       });
-      
+
       if (lastImageUrl) {
         try {
           SmartLogger.route(`🎨 Создаем SVG файлы для найденного изображения`);
@@ -447,10 +504,10 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
             printType,
             userQuery
           );
-          
+
           if (svgResult.success) {
             let response = `Готово! Я преобразовал ваше изображение в SVG формат для печати:\n\n📄 **Файлы для печати созданы:**`;
-            
+
             svgResult.result.files.forEach(file => {
               if (file.type === 'screenprint') {
                 response += `\n• [SVG для шелкографии](${file.url}) - ${(file.size / 1024).toFixed(1)} КБ`;
@@ -460,18 +517,18 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                 response += `\n• [Цветовая схема](${file.url}) - палитра цветов`;
               }
             });
-            
+
             if (svgResult.result.recommendations.screenprint) {
               response += `\n\n**Рекомендации для шелкографии:** ${svgResult.result.recommendations.screenprint.notes}`;
             }
             if (svgResult.result.recommendations.dtf) {
               response += `\n**Рекомендации для DTF:** ${svgResult.result.recommendations.dtf.notes}`;
             }
-            
+
             if (svgResult.result.aiAnalysis && svgResult.result.aiAnalysis.recommendations) {
               response += `\n\n🤖 **Экспертные рекомендации AI:** ${svgResult.result.aiAnalysis.recommendations}`;
             }
-            
+
             return {
               success: true,
               response: response,
@@ -513,43 +570,43 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     // Обработка запросов оптимизации для печати
     if (isPrintOptRequest || isVectorRequest || isFullProcessRequest || isAdvancedPrintRequest || isColorSeparationRequest) {
       SmartLogger.route(`🖨️ Обнаружен запрос на оптимизацию для печати`);
-      
+
       // Специальная отладка для цветовой сепарации
       if (isColorSeparationRequest) {
         SmartLogger.route(`🎨 Подтверждено: это запрос на цветовую сепарацию!`);
       }
-      
+
       // Ищем последнее изображение в контексте сессии
       let lastImageUrl = null;
-      
+
       // Получаем сообщения напрямую из базы данных через SQL
       const { db } = require('./db');
       const { aiMessages } = require('../shared/schema');
       const { eq } = require('drizzle-orm');
-      
+
       const messages = await db
         .select()
         .from(aiMessages)
         .where(eq(aiMessages.sessionId, sessionId))
         .orderBy(aiMessages.createdAt);
-      
+
       SmartLogger.route(`🔍 Ищем изображения для оптимизации:`, {
         sessionId,
         messagesCount: messages?.length || 0
       });
-      
+
       if (messages && messages.length > 0) {
         // Ищем последнее изображение в сообщениях AI
         for (let i = messages.length - 1; i >= 0; i--) {
           const msg = messages[i];
-          
+
           if (msg.content && msg.sender === 'ai' && (msg.content.includes('![') || msg.content.includes('https://image.pollinations.ai'))) {
             // Проверяем разные форматы изображений
             const imageMatch1 = msg.content.match(/!\[.*?\]\((https:\/\/image\.pollinations\.ai[^)]+)\)/);
             const imageMatch2 = msg.content.match(/(https:\/\/image\.pollinations\.ai[^\s\)]+)/);
-            
+
             const imageMatch = imageMatch1 || imageMatch2;
-            
+
             if (imageMatch) {
               lastImageUrl = imageMatch[1];
               SmartLogger.route(`🖼️ Найдено изображение для оптимизации: ${lastImageUrl.substring(0, 80)}...`);
@@ -558,49 +615,49 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
           }
         }
       }
-      
+
       if (lastImageUrl) {
         try {
           SmartLogger.route(`🖨️ Начинаем оптимизацию изображения для печати`);
-          
+
           // Определяем тип обработки из запроса
           let printType = 'both'; // по умолчанию и шелкография и DTF
           let useAdvanced = false;
-          
+
           if (queryLowerForSvg.includes('шелкографи') || queryLowerForSvg.includes('трафарет')) {
             printType = 'screen-print';
           } else if (queryLowerForSvg.includes('dtf') || queryLowerForSvg.includes('сублимаци')) {
             printType = 'dtf';
           }
-          
+
           // Проверяем, нужна ли продвинутая обработка
           if (queryLowerForSvg.includes('вектор') || queryLowerForSvg.includes('сепараци') || 
               queryLowerForSvg.includes('профессиональ') || queryLowerForSvg.includes('качеств') ||
               isFullProcessRequest || isAdvancedPrintRequest || isColorSeparationRequest) {
             useAdvanced = true;
           }
-          
+
           let optimization;
-          
+
           if (useAdvanced) {
             // Используем продвинутую обработку
             const { processImageAdvanced } = require('./advanced-vector-processor');
-            
+
             const advancedOptions = {
               createVector: isFullProcessRequest || isAdvancedPrintRequest || queryLowerForSvg.includes('вектор') || queryLowerForSvg.includes('svg'),
               colorSeparation: isFullProcessRequest || isAdvancedPrintRequest || isColorSeparationRequest || queryLowerForSvg.includes('сепараци') || queryLowerForSvg.includes('цвет'),
               targetColors: 4
             };
-            
+
             const advancedResult = await processImageAdvanced(lastImageUrl, advancedOptions);
-            
+
             // Также выполняем стандартную оптимизацию
             optimization = await printOptimizer.optimizeImageForPrint(lastImageUrl, printType);
             optimization.advanced = advancedResult;
           } else {
             optimization = await printOptimizer.optimizeImageForPrint(lastImageUrl, printType);
           }
-          
+
           if (optimization.success) {
             let response;
             if (isFullProcessRequest || isAdvancedPrintRequest) {
@@ -608,17 +665,17 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
             } else {
               response = `Готово! Я оптимизировал ваше изображение для профессиональной печати:\n\n📁 **Созданы файлы с прямыми ссылками:**`;
             }
-            
+
             if (optimization.optimizations.screenPrint) {
               response += `\n\n🖨️ **Для шелкографии:**`;
-              
+
               // Добавляем информацию об интеллектуальном анализе
               if (optimization.optimizations.screenPrint.intelligentAnalysis) {
                 const analysis = optimization.optimizations.screenPrint.intelligentAnalysis;
                 response += `\n📊 *Интеллектуальный анализ: ${analysis.complexity} изображение, рекомендуется ${analysis.colors} цветов*`;
                 response += `\n💡 *${analysis.reason}*`;
               }
-              
+
               const screenFiles = optimization.optimizations.screenPrint.files;
               if (screenFiles.enhanced) {
                 const filename = screenFiles.enhanced.split('/').pop();
@@ -637,7 +694,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                 response += `\n• [Контуры для трафаретов](/output/screen-print/${filename})`;
               }
             }
-            
+
             if (optimization.optimizations.dtf) {
               response += `\n\n🎨 **Для DTF печати (цветные):**`;
               const dtfFiles = optimization.optimizations.dtf.files;
@@ -658,7 +715,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                 response += `\n• [Белая подложка для темных тканей](/output/dtf-print/${filename})`;
               }
             }
-            
+
             if (optimization.optimizations.vector) {
               response += `\n\n📐 **Векторные версии:**`;
               const vectorFiles = optimization.optimizations.vector.files;
@@ -671,11 +728,11 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                 response += `\n• [Контурная версия](/output/vector/${filename})`;
               }
             }
-            
+
             // Добавляем результаты продвинутой обработки
             if (optimization.advanced && optimization.advanced.success) {
               response += `\n\n🎯 **Продвинутая обработка:**`;
-              
+
               // Векторные файлы
               const vectorFiles = optimization.advanced.files.filter(f => f.type === 'vector');
               if (vectorFiles.length > 0) {
@@ -687,7 +744,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                   }
                 });
               }
-              
+
               // Цветовые сепарации
               const separationFiles = optimization.advanced.files.filter(f => f.type === 'color-separation');
               if (separationFiles.length > 0) {
@@ -703,7 +760,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                   }
                 });
               }
-              
+
               // Анализ цветов
               if (optimization.advanced.analysis) {
                 const analysis = optimization.advanced.analysis;
@@ -717,9 +774,9 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
                 }
               }
             }
-            
+
             response += `\n\n✅ Все файлы готовы к скачиванию по ссылкам выше. DTF файлы сохранили полную цветовую гамму для качественной печати.`;
-            
+
             return {
               success: true,
               response: response,
@@ -758,22 +815,22 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
     }
 
     const pythonProvider = require('./python_provider_routes');
-    
+
     // Проверяем запросы на генерацию изображений напрямую
     const imageKeywords = ['нарисуй', 'создай', 'сгенерируй', 'принт', 'дизайн', 'картинка', 'изображение', 'логотип', 'баннер', 'футболка', 'рисунок', 'вышивка', 'вышивку', 'embroidery'];
     const isImageRequest = imageKeywords.some(keyword => queryLowerForSvg.includes(keyword));
-    
+
     if (isImageRequest) {
       SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения`);
-      
+
       // Проверяем, это запрос на вышивку
       const isEmbroideryRequest = userQuery.toLowerCase().includes('вышивка') || 
                                  userQuery.toLowerCase().includes('вышивку') || 
                                  userQuery.toLowerCase().includes('embroidery');
-      
+
       // Импортируем генератор изображений
       const aiImageGenerator = require('./ai-image-generator');
-      
+
       try {
         // Определяем правильный стиль для генерации
         let imageStyle = 'realistic';
@@ -782,9 +839,9 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
         } else if (userQuery.toLowerCase().includes('принт') || userQuery.toLowerCase().includes('футболка') || userQuery.toLowerCase().includes('дизайн')) {
           imageStyle = 'vector';
         }
-        
+
         const imageResult = await aiImageGenerator.generateImage(userQuery, imageStyle);
-        
+
         if (imageResult.success && imageResult.imageUrl) {
           let response = `Я создал изображение по вашему запросу! Вот результат:
 
@@ -797,35 +854,35 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
             try {
               const embroideryHandler = require('./embroidery-chat-handler');
               const embroideryResult = await embroideryHandler.processEmbroideryGeneration(imageResult.imageUrl, userQuery);
-              
+
               if (embroideryResult.success && embroideryResult.files && embroideryResult.files.length > 0) {
                 response += `\n\n📄 **Файлы для вышивки созданы:**`;
-                
+
                 // Группируем файлы по типу
                 const embroideryFiles = embroideryResult.files.filter(f => f.type === 'embroidery');
                 const preparedImage = embroideryResult.files.find(f => f.type === 'prepared_image');
                 const colorScheme = embroideryResult.files.find(f => f.type === 'color_scheme');
-                
+
                 embroideryFiles.forEach(file => {
                   const sizeKB = (file.size / 1024).toFixed(1);
                   response += `\n• [${file.format.toUpperCase()} файл](${file.url}) - ${sizeKB} КБ`;
                 });
-                
+
                 if (preparedImage) {
                   const sizeKB = (preparedImage.size / 1024).toFixed(1);
                   response += `\n• [Подготовленное изображение](${preparedImage.url}) - ${sizeKB} КБ`;
                 }
-                
+
                 if (colorScheme) {
                   const sizeKB = (colorScheme.size / 1024).toFixed(1);
                   response += `\n• [Цветовая схема](${colorScheme.url}) - ${sizeKB} КБ`;
                 }
-                
+
                 // Добавляем превью вышивки на ткани
                 if (embroideryResult.previewUrl) {
                   response += `\n\n🧵 **Превью на ткани:** [Как будет выглядеть вышивка](${embroideryResult.previewUrl})`;
                 }
-                
+
                 if (embroideryResult.recommendations) {
                   response += `\n\n🧵 **Рекомендации для вышивки:** ${embroideryResult.recommendations}`;
                 }
@@ -837,7 +894,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
           } else {
             response += ` Если нужно что-то изменить, просто опишите что хотите поправить.`;
           }
-          
+
           return {
             success: true,
             response: response,
@@ -866,11 +923,11 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
         };
       }
     }
-    
+
     // Проверяем запросы времени/даты напрямую
     const timeQueries = ['время', 'сейчас время', 'какое время', 'который час', 'сегодня число', 'какое число', 'какая дата'];
     const isTimeQuery = timeQueries.some(q => queryLowerForSvg.includes(q));
-    
+
     if (isTimeQuery) {
       const now = new Date();
       const timeStr = now.toLocaleString('ru-RU', { 
@@ -882,7 +939,7 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
         minute: '2-digit',
         weekday: 'long'
       });
-      
+
       return {
         success: true,
         response: `Сейчас: ${timeStr} (московское время)`,
@@ -904,33 +961,33 @@ async function getAIResponseWithSearch(userQuery, options = {}) {
       'актуальные', 'свежие', 'что происходит', 'что случилось',
       'курс', 'цена', 'стоимость', 'погода', 'информация о'
     ];
-    
+
     const needsSearchDirect = searchKeywords.some(keyword => 
       userQuery.toLowerCase().includes(keyword)
     );
-    
+
     SmartLogger.route(`🔍 ПРОВЕРКА ПОИСКА: "${userQuery}"`);
     SmartLogger.route(`🔍 Найдены ключевые слова: ${needsSearchDirect}`);
-    
+
     if (needsSearchDirect) {
       SmartLogger.route(`🔍 АКТИВИРОВАН ПРЯМОЙ ПОИСК!`);
-      
+
       try {
         // Выполняем поиск напрямую через Python
         SmartLogger.route(`🔍 Выполняем Python поиск для: "${userQuery}"`);
-        
+
         const { spawn } = require('child_process');
-        
+
         const searchResult = await new Promise((resolve) => {
           const pythonScript = `
 import sys
 import json
 try:
     from duckduckgo_search import DDGS
-    
+
     query = "${userQuery.replace(/"/g, '\\"')}"
     results = []
-    
+
     with DDGS() as ddgs:
         search_results = list(ddgs.text(query, max_results=10))
         for result in search_results:
@@ -940,13 +997,13 @@ try:
                 'url': result.get('href', ''),
                 'source': 'DuckDuckGo'
             })
-    
+
     print(json.dumps({
         'success': True,
         'results': results,
         'total': len(results)
     }))
-    
+
 except Exception as e:
     print(json.dumps({
         'success': False,
@@ -957,11 +1014,11 @@ except Exception as e:
 
           const python = spawn('python3', ['-c', pythonScript]);
           let output = '';
-          
+
           python.stdout.on('data', (data) => {
             output += data.toString();
           });
-          
+
           python.on('close', (code) => {
             SmartLogger.route(`🔍 Python поиск завершен с кодом: ${code}`);
             try {
@@ -973,29 +1030,29 @@ except Exception as e:
               resolve({ success: false, error: 'Ошибка парсинга', results: [] });
             }
           });
-          
+
           python.on('error', (error) => {
             SmartLogger.error(`🔍 Ошибка Python: ${error}`);
             resolve({ success: false, error: error.message, results: [] });
           });
         });
-        
+
         if (searchResult && searchResult.success && searchResult.results && searchResult.results.length > 0) {
           SmartLogger.route(`🔍 ПОИСК УСПЕШЕН! Найдено ${searchResult.results.length} результатов`);
-          
+
           try {
             // Загружаем и парсим содержимое найденных страниц
             const { enrichSearchResults } = require('./web-content-parser');
             SmartLogger.route(`🔍 Загружаем содержимое страниц...`);
-            
+
             const enrichedResults = await enrichSearchResults(searchResult.results);
-            
+
             SmartLogger.route(`🔍 СОДЕРЖИМОЕ ЗАГРУЖЕНО! Обработано ${enrichedResults.length} страниц`);
-            
+
             // Используем AI для обработки результатов поиска
             const advancedSearchProvider = require('./advanced-search-provider');
             const searchAnalysis = await advancedSearchProvider.analyzeSearchResults(enrichedResults, userQuery);
-            
+
             let formattedResponse;
             if (searchAnalysis && searchAnalysis.aiAnswer) {
               // Используем AI-обработанный ответ
@@ -1028,10 +1085,10 @@ ${r.content}
               searchType: 'content_parsed',
               resultsCount: enrichedResults.length
             };
-            
+
           } catch (parseError) {
             SmartLogger.route(`❌ Ошибка парсинга: ${parseError.message}, используем базовые результаты`);
-            
+
             // Fallback к обычному отображению
             const formattedResponse = `🔍 **Найдена актуальная информация:**
 
@@ -1073,26 +1130,26 @@ ${sessionContext.context}
 Ключевые слова для генерации изображений: нарисуй, создай, сгенерируй, принт, дизайн, картинка, изображение, логотип, баннер`;
 
     const initialResult = await pythonProvider.callPythonAI(prompt, 'Qwen_Qwen_2_72B');
-    
+
     let responseText = '';
     if (typeof initialResult === 'string') {
       responseText = initialResult;
     } else if (initialResult && initialResult.response) {
       responseText = initialResult.response;
     }
-    
+
     SmartLogger.route(`🤖 AI ответил: "${responseText.substring(0, 50)}..."`);
-    
+
     // Если AI говорит, что нужна генерация изображения
     if (responseText.includes('ГЕНЕРАЦИЯ_ИЗОБРАЖЕНИЯ')) {
       SmartLogger.route(`🎨 AI запросил генерацию изображения`);
-      
+
       // Импортируем генератор изображений
       const aiImageGenerator = require('./ai-image-generator');
-      
+
       try {
         const imageResult = await aiImageGenerator.generateImage(userQuery, 'realistic');
-        
+
         if (imageResult.success && imageResult.imageUrl) {
           return {
             success: true,
@@ -1126,13 +1183,13 @@ ${sessionContext.context}
         };
       }
     }
-    
 
-    
+
+
     // Если AI говорит, что нужен поиск
     if (responseText.includes('НУЖЕН_ПОИСК')) {
       SmartLogger.route(`🔍 AI запросил поиск`);
-      
+
       // Определяем тип поиска
       const advancedSearchKeywords = [
         'найди подробно', 'полный поиск', 'всестороннее исследование', 
@@ -1140,23 +1197,23 @@ ${sessionContext.context}
         'поиск в реальном времени', 'свежая информация', 'актуальные данные',
         'комплексный анализ', 'детальное исследование'
       ];
-      
+
       const needsAdvancedSearch = advancedSearchKeywords.some(keyword => 
         userQuery.toLowerCase().includes(keyword)
       );
-      
+
       let searchResults;
-      
+
       if (needsAdvancedSearch) {
         SmartLogger.route(`🔍 Выполняем расширенный поиск`);
         const { performAdvancedSearch } = require('./advanced-search-provider');
-        
+
         // Определяем тип расширенного поиска
         let searchType = 'comprehensive';
         if (userQuery.toLowerCase().includes('новости')) searchType = 'news';
         if (userQuery.toLowerCase().includes('академический') || userQuery.toLowerCase().includes('научны')) searchType = 'academic';
         if (userQuery.toLowerCase().includes('изображени') || userQuery.toLowerCase().includes('картинк')) searchType = 'images';
-        
+
         searchResults = await performAdvancedSearch(userQuery, {
           searchType,
           maxResults: 15,
@@ -1166,10 +1223,10 @@ ${sessionContext.context}
         SmartLogger.route(`🔍 Выполняем обычный веб-поиск`);
         searchResults = await webSearchProvider.performWebSearch(userQuery);
       }
-      
+
       if (searchResults.success && searchResults.results && searchResults.results.length > 0) {
         let searchContext;
-        
+
         if (needsAdvancedSearch && searchResults.analysis) {
           // Формируем расширенный контекст с анализом
           searchContext = `РЕЗУЛЬТАТЫ РАСШИРЕННОГО ПОИСКА:
@@ -1187,10 +1244,10 @@ ${searchResults.analysis.topResults.map(r => `• ${r.title}: ${r.snippet} (${r.
         } else {
           searchContext = webSearchProvider.formatSearchResultsForAI(searchResults);
         }
-        
+
         SmartLogger.route(`🔍 Найдено результатов: ${searchResults.results.length}`);
         SmartLogger.route(`🔍 Контекст: ${searchContext.substring(0, 200)}...`);
-        
+
         // Отправляем AI данные из поиска
         const searchPrompt = `Ты - AI ассистент с доступом к расширенному поиску. Пользователь спрашивает: "${userQuery}"
 
@@ -1206,14 +1263,14 @@ ${searchContext}
 
         SmartLogger.route(`🔍 Отправляем AI промпт с данными поиска`);
         const finalResult = await pythonProvider.callPythonAI(searchPrompt, 'Qwen_Qwen_2_72B');
-        
+
         let finalText = '';
         if (typeof finalResult === 'string') {
           finalText = finalResult;
         } else if (finalResult && finalResult.response) {
           finalText = finalResult.response;
         }
-        
+
         if (finalText && finalText.length > 20) {
           return {
             success: true,
@@ -1224,45 +1281,45 @@ ${searchContext}
           };
         }
       }
-      
+
       return { success: false, reason: 'search_failed' };
     } else {
       // AI дал обычный ответ - но нужно проверить, не является ли это запросом на генерацию
-      
+
       // Проверяем специфичные промпты для разных типов генерации
       const isGeneralImageRequest = queryLowerForSvg.includes('создай изображение');
       const isPrintRequest = queryLowerForSvg.includes('создай принт');
       const isEmbroideryGeneration = queryLowerForSvg.includes('создай вышивку');
-      
+
       // Дополнительные ключевые слова для совместимости
       const additionalImageKeywords = ['нарисуй', 'сгенерируй', 'картинка', 'логотип', 'баннер'];
       const embroideryKeywords = ['dst', 'pes', 'jef', 'exp', 'vp3'];
-      
+
       // Исключаем запросы на анализ трендов и бизнес-функции
       const isTrendAnalysis = queryLowerForSvg.includes('тренд') || queryLowerForSvg.includes('анализ') || queryLowerForSvg.includes('популярн');
       const isBusinessFunction = queryLowerForSvg.includes('рассчит') || queryLowerForSvg.includes('калькул') || queryLowerForSvg.includes('предложение');
-      
+
       const hasEmbroideryFormats = embroideryKeywords.some(keyword => queryLowerForSvg.includes(keyword));
       const needsEmbroideryConversion = isEmbroideryGeneration || hasEmbroideryFormats;
-      
+
       const isImageRequest = !isTrendAnalysis && !isBusinessFunction && (
         isGeneralImageRequest || 
         isPrintRequest || 
         isEmbroideryGeneration ||
         additionalImageKeywords.some(keyword => queryLowerForSvg.includes(keyword))
       );
-      
+
       if (isImageRequest) {
         SmartLogger.route(`🎨 Обнаружен запрос на генерацию изображения через ключевые слова`);
-        
+
         // Проверяем, нужна ли конвертация в формат вышивки
         if (needsEmbroideryConversion) {
           SmartLogger.route(`🧵 Запрос включает создание вышивки`);
-          
+
           try {
             const aiEmbroideryPipeline = require('./ai-embroidery-pipeline');
             const embroideryResult = await aiEmbroideryPipeline.generateAndConvertToEmbroidery(userQuery, options);
-            
+
             if (embroideryResult.success) {
               // Формируем ответ с изображением и файлами вышивки
               let response = `Готово! Я создал дизайн для вышивки по вашему запросу.
@@ -1308,13 +1365,13 @@ ${embroideryResult.instructions.join('\n')}`;
             SmartLogger.route(`⚠️ Ошибка пайплайна вышивки, создаем обычное изображение`);
           }
         }
-        
+
         // Обычная генерация изображения
         const aiImageGenerator = require('./ai-image-generator');
-        
+
         try {
           const imageResult = await aiImageGenerator.generateImage(userQuery, 'realistic');
-          
+
           if (imageResult.success && imageResult.imageUrl) {
             let response = `Я создал изображение по вашему запросу! Вот результат:
 
@@ -1328,9 +1385,9 @@ ${embroideryResult.instructions.join('\n')}`;
             const hasShirt = lowerQuery.includes('футболка');
             const hasPrinting = lowerQuery.includes('печать');
             const svgCheck = svgPrintConverter.isPrintConversionRequest(userQuery);
-            
+
             const needsPrintFiles = svgCheck || hasPrint || hasShirt || hasPrinting;
-            
+
             SmartLogger.route(`🔍 Проверка на создание SVG файлов:`, {
               userQuery: userQuery.substring(0, 50),
               hasPrint,
@@ -1351,11 +1408,11 @@ ${embroideryResult.instructions.join('\n')}`;
                   printType,
                   userQuery
                 );
-                
+
                 if (svgResult.success) {
                   svgFiles = svgResult.result.files;
                   response += `\n\n📄 **Файлы для печати созданы:**`;
-                  
+
                   svgResult.result.files.forEach(file => {
                     if (file.type === 'screenprint') {
                       response += `\n• [SVG для шелкографии](${file.url}) - ${(file.size / 1024).toFixed(1)} КБ`;
@@ -1365,19 +1422,19 @@ ${embroideryResult.instructions.join('\n')}`;
                       response += `\n• [Цветовая схема](${file.url}) - палитра цветов`;
                     }
                   });
-                  
+
                   if (svgResult.result.recommendations.screenprint) {
                     response += `\n\n**Рекомендации для шелкографии:** ${svgResult.result.recommendations.screenprint.notes}`;
                   }
                   if (svgResult.result.recommendations.dtf) {
                     response += `\n**Рекомендации для DTF:** ${svgResult.result.recommendations.dtf.notes}`;
                   }
-                  
+
                   // Добавляем AI рекомендации
                   if (svgResult.result.aiAnalysis && svgResult.result.aiAnalysis.recommendations) {
                     response += `\n\n🤖 **Экспертные рекомендации AI:** ${svgResult.result.aiAnalysis.recommendations}`;
                   }
-                  
+
                   SmartLogger.success(`SVG файлы созданы: ${svgFiles.length} файлов`);
                 } else {
                   SmartLogger.error('Ошибка создания SVG файлов:', svgResult.error);
@@ -1392,7 +1449,7 @@ ${embroideryResult.instructions.join('\n')}`;
             } else if (!needsPrintFiles) {
               response += ` Если нужно что-то изменить, просто опишите что хотите поправить.`;
             }
-            
+
             return {
               success: true,
               response: response,
@@ -1422,20 +1479,20 @@ ${embroideryResult.instructions.join('\n')}`;
           };
         }
       }
-      
+
       // Если не генерация изображения, даем обычный ответ с полным контекстом
       const enhancedPrompt = chatMemory.createEnhancedPrompt(userQuery, sessionContext);
 
       // Получаем новый ответ с информацией о возможностях и контекстом
       const enhancedResult = await pythonProvider.callPythonAI(enhancedPrompt, 'Qwen_Qwen_2_72B');
-      
+
       let enhancedText = '';
       if (typeof enhancedResult === 'string') {
         enhancedText = enhancedResult;
       } else if (enhancedResult && enhancedResult.response) {
         enhancedText = enhancedResult.response;
       }
-      
+
       return {
         success: true,
         response: enhancedText || responseText,
@@ -1443,7 +1500,7 @@ ${embroideryResult.instructions.join('\n')}`;
         searchUsed: false
       };
     }
-    
+
   } catch (error) {
     SmartLogger.error(`Ошибка AI с поиском: ${error.message}`);
     return { success: false, reason: 'error' };
@@ -1456,24 +1513,24 @@ ${embroideryResult.instructions.join('\n')}`;
 async function getSmartResponse(userQuery) {
   try {
     SmartLogger.route(`🚀 ВЫЗВАНА УПРОЩЕННАЯ ИНТЕГРАЦИЯ для: "${userQuery}"`);
-    
+
     // Проверяем, нужен ли поиск
     const searchNeeded = webSearchProvider.needsWebSearch(userQuery);
     SmartLogger.route(`🔍 Проверка поиска в упрощенной функции: ${searchNeeded}`);
-    
+
     if (!searchNeeded) {
       SmartLogger.route(`❌ Поиск не нужен, выходим`);
       return { success: false, reason: 'no_search_needed' };
     }
-    
+
     SmartLogger.route(`✅ Выполняем поиск + AI для: "${userQuery}"`);
-    
+
     // Получаем данные из интернета
     const searchResults = await webSearchProvider.performWebSearch(userQuery);
-    
+
     if (searchResults.success && searchResults.results && searchResults.results.length > 0) {
       const searchContext = webSearchProvider.formatSearchResultsForAI(searchResults);
-      
+
       // Простой промпт для AI
       const prompt = `Вопрос: ${userQuery}
 
@@ -1485,10 +1542,10 @@ ${searchContext}
       // Пробуем получить ответ от AI
       const pythonProvider = require('./python_provider_routes');
       const result = await pythonProvider.callPythonAI(prompt, 'Qwen_Qwen_2_72B');
-      
+
       SmartLogger.route(`📊 Тип результата: ${typeof result}`);
       SmartLogger.route(`📊 Полная структура результата:`, result);
-      
+
       // Если result - это строка (прямой ответ), используем её
       let responseText = '';
       if (typeof result === 'string') {
@@ -1496,9 +1553,9 @@ ${searchContext}
       } else if (result && result.response) {
         responseText = result.response;
       }
-      
+
       SmartLogger.route(`📝 Извлеченный текст ответа: "${responseText.substring(0, 100)}..."`);
-      
+
       if (responseText && responseText.length > 20) {
         // Проверяем, что ответ содержит полезную информацию
         const hasWeatherData = responseText.includes('°C') || 
@@ -1506,11 +1563,11 @@ ${searchContext}
                               responseText.includes('температура') ||
                               responseText.includes('дождь') ||
                               responseText.includes('влажность');
-        
+
         const isRefusal = responseText.toLowerCase().includes('не могу предоставить');
-        
+
         SmartLogger.route(`🔍 Анализ ответа: hasWeatherData=${hasWeatherData}, isRefusal=${isRefusal}`);
-        
+
         if (hasWeatherData && !isRefusal) {
           SmartLogger.success(`✅ Упрощенная интеграция получила реальные данные!`);
           return {
@@ -1520,15 +1577,15 @@ ${searchContext}
             searchUsed: true
           };
         }
-        
+
         SmartLogger.route(`⚠️ Ответ не содержит реальных данных: hasWeatherData=${hasWeatherData}, isRefusal=${isRefusal}`);
       } else {
         SmartLogger.route(`❌ AI не вернул текст или текст слишком короткий`);
       }
     }
-    
+
     return { success: false, reason: 'search_failed' };
-    
+
   } catch (error) {
     SmartLogger.error(`Ошибка поиска: ${error.message}`);
     return { success: false, reason: 'error' };
@@ -1676,10 +1733,10 @@ const DEFAULT_PROVIDERS = ["FreeGpt", "Liaobots", "HuggingChat", "DeepInfra", "Y
 function analyzeMessage(message) {
   // Преобразуем сообщение в нижний регистр для поиска ключевых слов
   const lowerMessage = message.toLowerCase();
-  
+
   // Массив обнаруженных категорий с количеством совпадений
   const detectedCategories = [];
-  
+
   // Специальная проверка для генерации изображений с более гибким распознаванием
   const imageGenerationPatterns = [
     /создай.*принт/i,
@@ -1693,7 +1750,7 @@ function analyzeMessage(message) {
     /макет/i,
     /концепт/i
   ];
-  
+
   // Специальная проверка для редактирования изображений
   const imageEditingPatterns = [
     /убери.*с.*изображения/i,
@@ -1708,7 +1765,7 @@ function analyzeMessage(message) {
     /change.*background/i,
     /enhance.*image/i
   ];
-  
+
   let isImageGeneration = false;
   for (const pattern of imageGenerationPatterns) {
     if (pattern.test(message)) {
@@ -1716,7 +1773,7 @@ function analyzeMessage(message) {
       break;
     }
   }
-  
+
   let isImageEditing = false;
   for (const pattern of imageEditingPatterns) {
     if (pattern.test(message)) {
@@ -1724,7 +1781,7 @@ function analyzeMessage(message) {
       break;
     }
   }
-  
+
   if (isImageEditing) {
     detectedCategories.push({
       category: 'image_editing',
@@ -1738,7 +1795,7 @@ function analyzeMessage(message) {
       providers: PROVIDER_SPECIALTIES.image_generation.providers
     });
   }
-  
+
   // Проверка на редактирование изображений
   const imageEditPatterns = [
     // Команды добавления
@@ -1797,7 +1854,7 @@ function analyzeMessage(message) {
     /без.*шляпы/i,
     /без.*очков/i
   ];
-  
+
   let isImageEdit = false;
   for (const pattern of imageEditPatterns) {
     if (pattern.test(message)) {
@@ -1805,7 +1862,7 @@ function analyzeMessage(message) {
       break;
     }
   }
-  
+
   if (isImageEdit) {
     detectedCategories.push({
       category: 'image_edit',
@@ -1813,21 +1870,21 @@ function analyzeMessage(message) {
       providers: PROVIDER_SPECIALTIES.image_generation.providers
     });
   }
-  
+
   // Проверяем каждую категорию на наличие ключевых слов
   for (const [category, details] of Object.entries(PROVIDER_SPECIALTIES)) {
     if (category === 'image_generation' && isImageGeneration) {
       continue; // Уже обработали выше
     }
-    
+
     let matchCount = 0;
-    
+
     for (const keyword of details.keywords) {
       if (lowerMessage.includes(keyword)) {
         matchCount++;
       }
     }
-    
+
     if (matchCount > 0) {
       detectedCategories.push({
         category,
@@ -1836,10 +1893,10 @@ function analyzeMessage(message) {
       });
     }
   }
-  
+
   // Сортируем категории по количеству совпадений (от большего к меньшему)
   detectedCategories.sort((a, b) => b.matchCount - a.matchCount);
-  
+
   // Если ни одна категория не подошла, используем провайдеры по умолчанию
   if (detectedCategories.length === 0) {
     return {
@@ -1848,7 +1905,7 @@ function analyzeMessage(message) {
       matchCount: 0
     };
   }
-  
+
   // Возвращаем наиболее подходящую категорию
   return {
     category: detectedCategories[0].category,
@@ -1876,18 +1933,18 @@ async function routeMessage(message, options = {}) {
   SmartLogger.route(`=== ДЕТАЛЬНАЯ ПРОВЕРКА ВЕБ-ПОИСКА ===`);
   SmartLogger.route(`Исходное сообщение: "${message}"`);
   SmartLogger.route(`Сообщение в нижнем регистре: "${message.toLowerCase()}"`);
-  
+
   const needsSearch = webSearchProvider.needsWebSearch(message);
   SmartLogger.route(`Результат needsWebSearch: ${needsSearch}`);
-  
+
   // Новый подход: AI сам определяет, нужен ли поиск
   SmartLogger.route(`🤖 Отправляем запрос AI с возможностью поиска`);
-  
+
   try {
     const aiWithSearchResult = await getAIResponseWithSearch(message, options);
     if (aiWithSearchResult.success) {
       SmartLogger.success(`Получен ответ от AI ${aiWithSearchResult.searchUsed ? 'с поиском' : 'без поиска'}`);
-      
+
       // Сохраняем информацию об операции
       if (options.sessionId) {
         await chatMemory.saveOperationInfo(options.sessionId, 'ai_response', {
@@ -1896,19 +1953,19 @@ async function routeMessage(message, options = {}) {
           imageGenerated: aiWithSearchResult.imageGenerated
         });
       }
-      
+
       return aiWithSearchResult;
     }
   } catch (error) {
     SmartLogger.error(`Ошибка AI с поиском: ${error.message}`);
   }
-  
+
   if (needsSearch) {
     SmartLogger.route(`Обнаружен запрос, требующий веб-поиска`);
-    
+
     try {
       const searchResults = await webSearchProvider.performWebSearch(message);
-      
+
       if (searchResults.success && searchResults.results.length > 0) {
         // Формируем контекст для AI с результатами поиска
         const searchContext = webSearchProvider.formatSearchResultsForAI(searchResults);
@@ -1919,19 +1976,19 @@ async function routeMessage(message, options = {}) {
 ${searchContext}
 
 ОБЯЗАТЕЛЬНО используй эту актуальную информацию в своём ответе. НЕ говори, что не можешь предоставить данные в реальном времени - у тебя есть свежая информация выше!`;
-        
+
         // Продолжаем обработку с обогащенным сообщением
         SmartLogger.route(`Веб-поиск успешен, найдено результатов: ${searchResults.results.length}`);
         SmartLogger.route(`Отправляем AI обогащенное сообщение: "${enhancedMessage.substring(0, 200)}..."`);
-        
+
         // Используем специализированные провайдеры для ответа с актуальной информацией
         const searchProviders = ["Qwen_Qwen_2_72B", "You", "PerplexityApi", "Qwen_Qwen_2_5_Max"];
-        
+
         for (const provider of searchProviders) {
           try {
             const pythonProvider = require('./python_provider_routes');
             const result = await pythonProvider.callPythonAI(enhancedMessage, provider);
-            
+
             // Проверяем, что ответ содержит реальную информацию, а не отказ
             const hasRealData = result.response && (
               result.response.includes('°C') ||
@@ -1944,15 +2001,15 @@ ${searchContext}
               result.response.includes('новости') ||
               result.response.includes('событи')
             );
-            
+
             const isRefusal = result.response && (
               result.response.toLowerCase().includes('не могу предоставить') &&
               !hasRealData
             );
-            
+
             if (result.success && result.response && !isRefusal) {
               SmartLogger.success(`Веб-поиск + AI ответ готов от провайдера: ${provider}`);
-              
+
               return {
                 success: true,
                 response: result.response,
@@ -1970,7 +2027,7 @@ ${searchContext}
             continue;
           }
         }
-        
+
         SmartLogger.error(`Не удалось получить ответ от AI провайдеров с веб-поиском`);
       } else {
         SmartLogger.route(`Веб-поиск не дал результатов, продолжаем обычную обработку`);
@@ -1984,18 +2041,18 @@ ${searchContext}
   // Проверяем запросы на генерацию изображений для вышивки
   if (aiEmbroideryPipeline.isEmbroideryGenerationRequest(message)) {
     SmartLogger.route(`Обнаружен запрос на создание дизайна для вышивки`);
-    
+
     try {
       const result = await aiEmbroideryPipeline.generateAndConvertToEmbroidery(message, {
         sessionId: options.sessionId,
         userId: options.userId,
         conversionOptions: {}
       });
-      
+
       if (result.success) {
         // Формируем полный ответ с AI-анализом
         let fullResponse = result.message;
-        
+
         // Добавляем информацию о файлах для скачивания
         if (result.files && result.files.length > 0) {
           fullResponse += '\n\n📁 **Файлы для скачивания:**\n';
@@ -2007,7 +2064,7 @@ ${searchContext}
             fullResponse += `\n${emoji} [${shortName}](${file.path})`;
           });
         }
-        
+
         // Добавляем детали
         if (result.details) {
           fullResponse += '\n\n📋 **Детали:**\n';
@@ -2015,17 +2072,17 @@ ${searchContext}
           fullResponse += `\n• Размер: ${result.details.size}`;
           fullResponse += `\n• Формат: ${result.details.machineFormat}`;
         }
-        
+
         // Добавляем изображение
         if (result.generatedImage) {
           fullResponse += `\n\n![Сгенерированное изображение](${result.generatedImage})`;
         }
-        
+
         // Добавляем AI-отчет об оптимизации, если он есть
         if (result.aiOptimizationReport) {
           fullResponse += '\n\n' + result.aiOptimizationReport;
         }
-        
+
         return {
           success: true,
           response: fullResponse,
@@ -2061,7 +2118,7 @@ ${searchContext}
   // Проверяем запросы на конвертацию в форматы вышивки
   if (embroideryHandler.isEmbroideryRequest(message)) {
     SmartLogger.route(`Обнаружен запрос на конвертацию в формат вышивки`);
-    
+
     try {
       let imageData = null;
       if (options.imageUrl) {
@@ -2074,9 +2131,9 @@ ${searchContext}
           filename: path.basename(options.imageUrl)
         };
       }
-      
+
       const result = await embroideryHandler.handleEmbroideryRequest(message, imageData);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -2110,18 +2167,18 @@ ${searchContext}
   // Если изображение, используем наш собственный детектор объектов
   if (options.imageUrl) {
     SmartLogger.route(`Обнаружено изображение! Используем собственный детектор объектов`);
-    
+
     try {
       const imageDetector = require('./image-object-detector');
       const result = await imageDetector.analyzeLocalImage(options.imageUrl, message);
-      
+
       if (result.success) {
         // Сохраняем ответ в память разговора
         if (options.userId) {
           const conversationMemory = require('./conversation-memory');
           conversationMemory.addAiResponse(options.userId, result.response, result.provider, result.model);
         }
-        
+
         return {
           success: true,
           response: result.response,
@@ -2157,10 +2214,10 @@ ${searchContext}
       provider: options.preferredProvider,
       hasContext: !!options.context 
     });
-    
+
     // Добавляем контекст к сообщению
     const messageWithContext = options.context ? options.context + message : message;
-    
+
     try {
       const result = await trySpecificProvider(options.preferredProvider, messageWithContext, options);
       if (result && result.success) {
@@ -2180,16 +2237,16 @@ ${searchContext}
   const analysis = analyzeMessage(message);
   console.log(`Категория сообщения: ${analysis.category} (совпадений: ${analysis.matchCount})`);
   console.log(`Рекомендуемые провайдеры: ${analysis.providers.join(', ')}`);
-  
+
   // Специальная обработка для генерации изображений
   if (analysis.category === 'image_generation') {
     SmartLogger.route('🎨 Обнаружен запрос на генерацию изображения!');
     try {
       const imageGenerator = require('./ai-image-generator');
-      
+
       // Извлекаем промпт для генерации из сообщения
       let prompt = message;
-      
+
       // Определяем стиль для принтов футболок
       let style = 'realistic';
       if (message.toLowerCase().includes('футболка') || 
@@ -2199,9 +2256,9 @@ ${searchContext}
         style = 'artistic';
         prompt = `Дизайн принта для футболки: ${prompt}`;
       }
-      
+
       const result = await imageGenerator.generateImage(prompt, style, null, options.sessionId, options.userId);
-      
+
       if (result.success) {
         // Сохраняем ответ в память разговора
         if (options.userId) {
@@ -2209,7 +2266,7 @@ ${searchContext}
           const response = `🎨 Изображение создано! Вот ваш дизайн:\n![Сгенерированное изображение](${result.imageUrl})`;
           conversationMemory.addAiResponse(options.userId, response, 'AI_Image_Generator', 'DALL-E_Style');
         }
-        
+
         return {
           success: true,
           response: `🎨 Изображение создано! Вот ваш дизайн:\n![Сгенерированное изображение](${result.imageUrl})`,
@@ -2239,18 +2296,18 @@ ${searchContext}
       return await getResponseFromProviders(fallbackMessage, analysis, options);
     }
   }
-  
+
   // Добавляем контекст к сообщению, если есть
   const messageWithContext = options.context ? options.context + message : message;
-  
+
   const result = await getResponseFromProviders(messageWithContext, analysis, options);
-  
+
   // Сохраняем ответ в память разговора
   if (result && result.success && options.userId) {
     const conversationMemory = require('./conversation-memory');
     conversationMemory.addAiResponse(options.userId, result.response, result.provider || result.bestProvider, result.model);
   }
-  
+
   return result;
 }
 
@@ -2264,10 +2321,10 @@ ${searchContext}
 async function getResponseFromProviders(message, analysis, options = {}) {
   const { category, providers } = analysis;
   let lastError = null;
-  
+
   // Формируем системный промпт в зависимости от категории
   let systemPrompt = "Вы полезный ассистент. Отвечайте точно и по существу.";
-  
+
   switch (category) {
     case "technical":
       systemPrompt = "Вы опытный программист. Давайте точные и подробные технические объяснения с примерами кода, где это уместно.";
@@ -2297,14 +2354,14 @@ async function getResponseFromProviders(message, analysis, options = {}) {
       systemPrompt = "Вы визуальный аналитик. Детально описывайте содержимое изображений и отвечайте на вопросы о них.";
       break;
   }
-  
+
   // Проверяем каждый провайдер из списка
   for (const provider of providers) {
-    try {
-      console.log(`Пробуем провайдер: ${provider} для категории: ${category}...`);
-      
+      try {
+        console.log(`Пробуем провайдер: ${provider} для категории: ${category}...`);
+
       let result;
-      
+
       if (provider === "DeepSpeek") {
         // Для DeepSpeek используем специальный провайдер
         result = await deepspeekProvider.getDeepSpeekResponse(message);
@@ -2332,7 +2389,7 @@ async function getResponseFromProviders(message, analysis, options = {}) {
           provider, 
           systemPrompt
         );
-        
+
         if (pythonResponse) {
           result = {
             success: true,
@@ -2343,13 +2400,13 @@ async function getResponseFromProviders(message, analysis, options = {}) {
           throw new Error(`Провайдер ${provider} не вернул ответ`);
         }
       }
-      
+
       // Проверяем ответ
       if (result && result.success) {
         // Добавляем мета-информацию о категории
         result.category = category;
         result.bestProvider = provider;
-        
+
         return result;
       }
     } catch (error) {
@@ -2357,18 +2414,18 @@ async function getResponseFromProviders(message, analysis, options = {}) {
       lastError = error;
     }
   }
-  
+
   // Если все указанные провайдеры отказали, пробуем Qwen_Qwen_2_72B как самый надежный
   if (!providers.includes("Qwen_Qwen_2_72B")) {
     try {
       console.log(`Пробуем резервный провайдер Qwen_Qwen_2_72B...`);
-      
+
       const pythonResponse = await pythonProviderRoutes.callPythonAI(
         message, 
         "Qwen_Qwen_2_72B", 
         systemPrompt
       );
-      
+
       if (pythonResponse) {
         return {
           success: true,
@@ -2382,15 +2439,15 @@ async function getResponseFromProviders(message, analysis, options = {}) {
       console.error(`Ошибка при использовании Qwen: ${qwenError.message}`);
     }
   }
-  
+
   // В крайнем случае используем FreeChat, который имеет внутреннюю систему fallback
   try {
     console.log(`Последняя попытка: используем FreeChat с системой автоматического выбора...`);
-    
+
     const result = await freechatEnhanced.getChatFreeEnhancedResponse(message, {
       systemPrompt
     });
-    
+
     if (result && result.success) {
       result.category = category;
       result.bestProvider = "FreeChat (auto)";
@@ -2399,7 +2456,7 @@ async function getResponseFromProviders(message, analysis, options = {}) {
   } catch (freechatError) {
     console.error(`Ошибка при использовании FreeChat: ${freechatError.message}`);
   }
-  
+
   // Если все провайдеры отказали, возвращаем ошибку
   return {
     success: false,
@@ -2412,24 +2469,24 @@ async function getResponseFromProviders(message, analysis, options = {}) {
 // API маршрут для обработки сообщений
 router.post('/message', async (req, res) => {
   const { message, imageUrl, userId = 'anonymous' } = req.body;
-  
+
   if (!message && !imageUrl) {
     return res.status(400).json({
       success: false,
       error: 'Сообщение или изображение должны быть предоставлены'
     });
   }
-  
+
   // Если есть только изображение без текста, используем стандартный запрос для анализа
   const messageText = message || 'Проанализируй это изображение';
-  
+
   try {
     // Получаем контекст разговора
     const conversationMemory = require('./conversation-memory');
     const contextData = conversationMemory.getMessageContext(userId, messageText);
-    
+
     console.log(`💭 Пользователь ${userId}: ${contextData.shouldContinueWithProvider ? 'продолжаем с ' + contextData.currentProvider : 'выбираем нового провайдера'}`);
-    
+
     // Маршрутизируем сообщение к подходящему провайдеру с учетом контекста
     const result = await routeMessage(messageText, { 
       imageUrl, 
@@ -2437,11 +2494,11 @@ router.post('/message', async (req, res) => {
       context: contextData.context,
       preferredProvider: contextData.shouldContinueWithProvider ? contextData.currentProvider : null
     });
-    
+
     res.json(result);
   } catch (error) {
     console.error(`Ошибка при маршрутизации сообщения: ${error.message}`);
-    
+
     res.status(500).json({
       success: false,
       error: `Ошибка при обработке сообщения: ${error.message}`
@@ -2452,25 +2509,33 @@ router.post('/message', async (req, res) => {
 // API маршрут для анализа сообщения (без отправки)
 router.post('/analyze', (req, res) => {
   const { message } = req.body;
-  
+
   if (!message) {
     return res.status(400).json({
       success: false,
       error: 'Сообщение не может быть пустым'
     });
   }
-  
+
   try {
     // Анализируем сообщение
     const analysis = analyzeMessage(message);
-    
+
+    // Проверяем наличие URL
+    const urlPattern = /(https?:\/\/[^\s]+)/g;
+    const hasUrls = urlPattern.test(message);
+    if (hasUrls) {
+        analysis.hasUrls = true;
+        analysis.complexity += 0.3; // Увеличиваем сложность для URL
+    }
+
     res.json({
       success: true,
       analysis
     });
   } catch (error) {
     console.error(`Ошибка при анализе сообщения: ${error.message}`);
-    
+
     res.status(500).json({
       success: false,
       error: `Ошибка при анализе сообщения: ${error.message}`
@@ -2483,7 +2548,7 @@ router.post('/analyze', (req, res) => {
  */
 async function handleAutomationRequest(query) {
   const lowerQuery = query.toLowerCase();
-  
+
   // Детекция запросов автоматизации
   const automationPatterns = {
     priceCalculation: /рассчит|стоимость|цен|калькул|сколько стоит|прайс|расценк/,
@@ -2511,7 +2576,7 @@ async function handleAutomationRequest(query) {
     }
 
     return null; // Не автоматизационный запрос
-    
+
   } catch (error) {
     SmartLogger.error(`Ошибка автоматизации: ${error.message}`);
     return null;
@@ -2523,10 +2588,10 @@ async function handleAutomationRequest(query) {
  */
 async function handlePriceCalculation(query, automation) {
   SmartLogger.route(`💰 Обрабатываем запрос расчета стоимости`);
-  
+
   // Извлекаем параметры из запроса
   const params = extractCalculationParams(query);
-  
+
   if (!params.width || !params.height || !params.quantity) {
     return {
       success: true,
@@ -2647,7 +2712,7 @@ async function handleProposalGeneration(query, automation) {
  */
 async function handleTrendAnalysis(query, automation) {
   SmartLogger.route(`📈 Анализируем тренды для: ${query}`);
-  
+
   const trendQuery = query.replace(/тренд|мод|популярн|стиль|что носят|актуальн/gi, '').trim();
   const result = await automation.trendAnalyzer.analyzeTrends(trendQuery || 'дизайн одежды');
 
@@ -2698,6 +2763,32 @@ ${result.recommendation}
     provider: 'BOOOMERANGS_Trends',
     searchUsed: true
   };
+}
+
+/**
+ * Извлечение недавних запросов из контекста сессии
+ */
+function extractRecentQueries(sessionContext) {
+  const queries = [];
+  
+  if (sessionContext && sessionContext.context) {
+    const lines = sessionContext.context.split('\n');
+    
+    for (const line of lines) {
+      if (line.startsWith('Пользователь:') || line.startsWith('User:')) {
+        const query = line.replace(/^(Пользователь:|User:)\s*/, '').trim();
+        if (query.length > 0 && queries.length < 10) {
+          queries.push({
+            text: query,
+            timestamp: new Date(),
+            length: query.length
+          });
+        }
+      }
+    }
+  }
+  
+  return queries;
 }
 
 module.exports = router;
