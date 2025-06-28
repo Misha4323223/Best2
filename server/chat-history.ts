@@ -1,6 +1,6 @@
-const { db } = require("./db");
-const { chatSessions, aiMessages } = require("@shared/schema");
-const { eq, desc } = require("drizzle-orm");
+import { db } from "./db.js";
+import { chatSessions, aiMessages } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 
 /**
  * Создание новой сессии чата
@@ -158,7 +158,7 @@ async function deleteSession(sessionId) {
   }
 }
 
-module.exports = {
+export {
   createChatSession,
   getUserChatSessions,
   saveMessage,
